@@ -41,11 +41,31 @@ bool keyStates[256];
 
 // Tank position tracking
 Vector3f tankPosition = Vector3f(0.0f, 0.0f, 0.0f);
-float tankSpeed = 0.1f;
-float rotationSpeed = 3.0f;
+float tankSpeed = 0.8f;
+float rotationSpeed = 1.0f;
 float tankRotation = 0.0f;
 float turretRotation = 0.0f;
 float wheelRotation = 0.0f;
+
+// New physics variables for acceleration/deceleration
+float tankVelocity = 0.0f;         // Current velocity
+float tankAcceleration = 0.005f;   // Acceleration rate
+float tankDeceleration = 0.01f;    // Deceleration rate
+float tankMaxVelocity = 0.02f;          // Maximum velocity
+float tankVelocityDecay = 0.9f;       // Natural velocity decay (friction)
+
+// Tank rotate
+float tankRotationVelocity = 0.0f;
+float tankRotationAcceleration = 0.1f;
+float tankRotationMaxVelocity = 1.0f;
+float tankRotationVelocityDecay = 0.8f;
+
+// Turret rotate
+float turretVelocity = 0.0f;         // Current velocity
+float turretAcceleration = 0.1f;   // Acceleration rate
+float turretDeceleration = 0.2f;    // Deceleration rate
+float turretMaxVelocity = 1.0f;          // Maximum velocity
+float turretVelocityDecay = 0.8f;       // Natural velocity decay (friction)
 
 GLuint shaderProgramID;
 GLuint tankShaderProgramID;
@@ -346,6 +366,41 @@ void drawMaze()
 
 void drawTank()
 {
+	// Apply natural velocity decay (simulates friction)
+	tankVelocity *= tankVelocityDecay;
+	turretVelocity *= turretVelocityDecay;
+	tankRotationVelocity *= tankRotationVelocityDecay;
+
+	// Apply current velocity to move the tank
+	if(tankVelocity != 0.0f) {
+		// Move tank based on current velocity in the direction it's facing
+		float radians = -tankRotation * (M_PI / 180.0f);
+		tankPosition.x -= sin(radians) * tankVelocity;
+		tankPosition.z += cos(radians) * tankVelocity;
+
+		// Rotate wheels proportional to velocity
+		wheelRotation += tankVelocity * 50.0f;
+		
+		// Update camera focus to follow tank
+		updateCamera();
+	}
+
+	if(turretVelocity != 0.0f) {
+		// Move tank based on current velocity in the direction it's facing
+		turretRotation += turretVelocity;
+		
+		// Update camera focus to follow tank
+		updateCamera();
+	}
+
+	if(tankRotationVelocity != 0.0f) {
+		// Move tank based on current velocity in the direction it's facing
+		tankRotation += tankRotationVelocity;
+		
+		// Update camera focus to follow tank
+		updateCamera();
+	}
+
 	//Apply Camera Manipluator to Set Model View Matrix on GPU
 	ModelViewMatrix.toIdentity();
 
@@ -438,58 +493,75 @@ void keyUp(unsigned char key, int x, int y)
 
 //! Handle Keys
 void handleKeys()
-{
-    //keys should be handled here
-	if(keyStates['w'])
-    {
-        // Move tank forward in the direction it's facing
-		float radians = -tankRotation * (M_PI / 180.0f);
-		tankPosition.x -= sin(radians) * tankSpeed;
-		tankPosition.z += cos(radians) * tankSpeed;
-
-		wheelRotation += 5.0f; // Rotate wheels forward
-		
-		// Update camera focus to follow tank
-		updateCamera();
+{    
+    // If velocity is very small, set it to zero to avoid perpetual tiny movement
+    if (fabs(tankVelocity) < 0.001f) {
+        tankVelocity = 0.0f;
     }
-	if(keyStates['a'])
-	{
-		tankRotation += rotationSpeed; // Rotate left
-		// Update camera focus after rotation
-		turretRotation += rotationSpeed; // Rotate turret left
-		updateCamera();
-	}
-	if(keyStates['s'])
-	{
-		// Move tank backward in the direction it's facing
-		float radians = -tankRotation * (M_PI / 180.0f);
-		tankPosition.x += sin(radians) * tankSpeed;
-		tankPosition.z -= cos(radians) * tankSpeed;
 
-		wheelRotation -= 5.0f; // Rotate wheels backward
-		
-		// Update camera focus after moving backwards
-		updateCamera();
-	}
-	if(keyStates['d'])
-	{
-		tankRotation -= rotationSpeed; // Rotate right
-		// Update camera focus after rotation
-		turretRotation -= rotationSpeed; // Rotate turret right
-		updateCamera();
-	}
-	if(keyStates['j'])
-	{
-		turretRotation += rotationSpeed; // Rotate right
-		// Update camera focus after rotation
-		updateCamera();
-	}
-	if(keyStates['l'])
-	{
-		turretRotation -= rotationSpeed; // Rotate right
-		// Update camera focus after rotation
-		updateCamera();
-	}
+	if (fabs(turretVelocity) < 0.001f) {
+        turretVelocity = 0.0f;
+    }
+    
+    if(keyStates['w'])
+    {
+        // Accelerate forward
+        tankVelocity += tankAcceleration;
+        // Cap maximum velocity
+        if(tankVelocity > tankMaxVelocity) {
+            tankVelocity = tankMaxVelocity;
+        }
+    }
+    else if(keyStates['s'])
+    {
+        // Accelerate backward
+        tankVelocity -= tankAcceleration;
+        // Cap maximum reverse velocity
+        if(tankVelocity < -tankMaxVelocity) {
+            tankVelocity = -tankMaxVelocity;
+        }
+    }
+    
+    if(keyStates['a'])
+    {
+        // tankRotation += rotationSpeed; // Rotate left
+        // // Update camera focus after rotation
+        // turretRotation += rotationSpeed; // Rotate turret left
+		tankRotationVelocity += tankRotationAcceleration;
+		if (tankRotationVelocity > tankRotationMaxVelocity) tankRotationVelocity = tankRotationMaxVelocity;
+
+		turretVelocity += turretAcceleration; // Rotate right
+        // Update camera focus after rotation
+		if (turretVelocity > turretMaxVelocity) turretVelocity = turretMaxVelocity;
+
+        updateCamera();
+    }
+    if(keyStates['d'])
+    {
+        // tankRotation -= rotationSpeed; // Rotate right
+        // // Update camera focus after rotation
+        // turretRotation -= rotationSpeed; // Rotate turret right
+		tankRotationVelocity -= tankRotationAcceleration;
+		if (tankRotationVelocity < -tankRotationMaxVelocity) tankRotationVelocity = -tankRotationMaxVelocity;
+
+		turretVelocity -= turretAcceleration; // Rotate right
+		if (turretVelocity < -turretMaxVelocity) turretVelocity = -turretMaxVelocity;
+        updateCamera();
+    }
+    if(keyStates['j'])
+    {
+        turretVelocity += turretAcceleration; // Rotate right
+        // Update camera focus after rotation
+		if (turretVelocity > turretMaxVelocity) turretVelocity = turretMaxVelocity;
+        updateCamera();
+    }
+    if(keyStates['l'])
+    {
+        turretVelocity -= turretAcceleration; // Rotate right
+		if (turretVelocity < -turretMaxVelocity) turretVelocity = -turretMaxVelocity;
+        // Update camera focus after rotation
+        updateCamera();
+    }
 }
 
 //! Mouse Interaction
