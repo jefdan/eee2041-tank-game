@@ -11,6 +11,7 @@
 #include <math.h>
 #include <string>
 #include <vector>
+#include <fstream>
 
 // Function declarations.
 bool initGL(int argc, char** argv);
@@ -32,6 +33,7 @@ void fireBall();
 void updateCamera();
 int printOglError(char *file, int line);
 void fireBallTimer(int value);
+void loadLevel(const char* filename);
 
 // Global variables.
 float game_time = 0.0f; // In game timer.
@@ -118,17 +120,9 @@ Vector3f ambient    = Vector3f(0.1,0.1,0.1);
 Vector3f specular   = Vector3f(0.0,1.0,0.0);
 float specularPower = 10.0;
 
-int maze[10][10] = {
-	{2,1,1,1,1,1,1,1,1,2},
-	{1,0,0,0,0,0,0,0,0,1},
-	{1,0,1,1,1,1,1,1,0,1},
-	{1,0,1,0,0,0,0,1,0,1},
-	{1,0,1,0,1,1,0,1,0,1},
-	{1,0,1,0,0,1,0,1,0,1},
-	{1,0,1,1,0,1,0,1,0,1},
-	{1,0,0,0,0,1,0,0,0,1},
-	{1,1,1,1,2,2,1,1,1,1},
-};
+int** maze;
+int mazeWidth = 10;
+int mazeHeight = 10;
 
 //! Main Program Entry
 int main(int argc, char** argv)
@@ -142,6 +136,9 @@ int main(int argc, char** argv)
 	//Init Key States to false;
     for(int i = 0 ; i < 256; i++)
         keyStates[i] = false;
+
+    // Load the level
+    loadLevel("../levels/home-sweet-home.level");
     
     // Setting up my programme.
 	tank_chassis.loadOBJ("../models/chassis.obj");
@@ -170,6 +167,12 @@ int main(int argc, char** argv)
 
     //Delete shader program
 	glDeleteProgram(shaderProgramID);
+
+    // Deallocate memory for the maze
+    for (int i = 0; i < mazeHeight; ++i) {
+        delete[] maze[i];
+    }
+    delete[] maze;
 
     return 0;
 }
@@ -304,9 +307,9 @@ void display(void)
 
 void drawMaze()
 {
-	for (int i = 0; i < 10; i++)
+	for (int i = 0; i < mazeHeight; i++)
 	{
-		for (int j = 0; j < 10; j++)
+		for (int j = 0; j < mazeWidth; j++)
 		{
 			if (maze[i][j] >= 1)
 			{
@@ -644,4 +647,49 @@ void updateCamera() // Update the camera to focus on the tank.
 void fireBallTimer(int value)
 {
 	canFire = true;
+}
+
+void loadLevel(const char* filename) {
+    std::ifstream file(filename);
+    if (!file.is_open()) {
+        std::cerr << "Could not open level file: " << filename << std::endl;
+        // Handle error, perhaps load a default level or exit
+        return;
+    }
+
+    std::string line;
+    std::vector<std::vector<int>> tempMaze;
+
+    while (std::getline(file, line)) {
+        std::vector<int> row;
+        for (char c : line) {
+            if (isdigit(c)) {
+                row.push_back(c - '0');
+            }
+        }
+        tempMaze.push_back(row);
+    }
+
+    mazeHeight = tempMaze.size();
+    mazeWidth = tempMaze[0].size();
+
+    // Dynamically allocate memory for the maze
+    maze = new int*[mazeHeight];
+    for (int i = 0; i < mazeHeight; ++i) {
+        maze[i] = new int[mazeWidth];
+        if (maze[i] == nullptr) {
+            std::cerr << "Memory allocation failed!" << std::endl;
+            // Handle the error appropriately, e.g., exit the program
+            return;
+        }
+    }
+
+    // Copy the data to the maze array
+    for (int i = 0; i < mazeHeight; ++i) {
+        for (int j = 0; j < mazeWidth; ++j) {
+            maze[i][j] = tempMaze[i][j];
+        }
+    }
+
+    file.close();
 }

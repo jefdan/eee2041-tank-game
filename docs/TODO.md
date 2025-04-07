@@ -7,7 +7,7 @@
 - [x] Basic environment (floor of boxes).
 - [x] Movement for the tank.
 - [x] Momentum for tank.
-- [ ] Launch ball from tank.
+- [x] Launch ball from tank.
 - [ ] Ability to fall off of platform.
 - [ ] Collision to collect coins
 - [ ] Read maps from files.
