@@ -34,9 +34,11 @@ void updateCamera();
 int printOglError(char *file, int line);
 void fireBallTimer(int value);
 void loadLevel(const char* filename);
+void render2dText(std::string text, float r, float g, float b, float x, float y);
 
 // Global variables.
 float game_time = 0.0f; // In game timer.
+int score = 0;
 
 int screenWidth   	        = 720;
 int screenHeight   	        = 720;
@@ -300,6 +302,9 @@ void display(void)
 
 	glUseProgram(0);
 
+	render2dText("Time: " + std::to_string(game_time/60), 1.0, 1.0, 1.0, -0.9, 0.9);
+	render2dText("Score: " + std::to_string(score), 1.0, 1.0, 1.0, 0.7, 0.9);
+
 	//Swap Buffers and post redisplay
 	glutSwapBuffers();
 	glutPostRedisplay();
@@ -481,6 +486,16 @@ void drawBall() {
 
 			ballVelocities[i] = ballVelocities[i] + gravity;
 			ballPositions[i] = ballPositions[i] + ballVelocities[i];
+
+			// Collision detection with coins
+			int mazeX = (int)(ballPositions[i].x / 2);
+			int mazeZ = -(int)(ballPositions[i].z / 2);
+
+			if (mazeX >= 0 && mazeX < mazeHeight && mazeZ >= 0 && mazeZ < mazeWidth && maze[mazeX][mazeZ] == 2)
+			{
+				score++;
+				maze[mazeX][mazeZ] = 1; // Remove the coin
+			}
 
 			if (
 				ballPositions[i].x > 20 || // If the ball is out of bounds...
@@ -692,4 +707,12 @@ void loadLevel(const char* filename) {
     }
 
     file.close();
+}
+
+void render2dText(std::string text, float r, float g, float b, float x, float y)
+{
+	glColor3f(r,g,b);
+	glRasterPos2f(x, y); // window coordinates
+	for(unsigned int i = 0; i < text.size(); i++)
+	glutBitmapCharacter(GLUT_BITMAP_HELVETICA_18, text[i]);
 }
