@@ -77,6 +77,11 @@ std::vector<Vector3f> ballVelocities;
 std::vector<bool> ballActives;
 float ballSpeed = 0.5f;
 Vector3f gravity = Vector3f(0.0f, -0.01f, 0.0f);
+float tankYVelocity = 0.0f; // Tank's vertical velocity
+float tankGravity = -0.001f; // Gravity affecting the tank
+float gameOverThreshold = -5.0f; // Y position below which game is over
+bool gameOver = false;
+bool tankFalling = false;
 
 bool canFire = true; // Add a boolean to control firing rate
 
@@ -140,7 +145,7 @@ int main(int argc, char** argv)
         keyStates[i] = false;
 
     // Load the level
-    loadLevel("../levels/home-sweet-home.level");
+    loadLevel("../levels/parallels.level");
     
     // Setting up my programme.
 	tank_chassis.loadOBJ("../models/chassis.obj");
@@ -303,7 +308,13 @@ void display(void)
 	glUseProgram(0);
 
 	render2dText("Time: " + std::to_string(game_time/60), 1.0, 1.0, 1.0, -0.9, 0.9);
-	render2dText("Score: " + std::to_string(score), 1.0, 1.0, 1.0, 0.7, 0.9);
+	render2dText("Score: " + std::to_string(score), 1.0, 1.0, 1.0, -0.9, 0.8);
+	render2dText("b for levels.", 1.0, 1.0, 1.0, -0.9, 0.7);
+
+	if (gameOver) {
+        render2dText("Game Over!", 1.0, 0.0, 0.0, -0.1, 0.0);
+		render2dText("Press 'r' to try again.", 1.0, 1.0, 1.0, -0.2, -0.1);
+    }
 
 	//Swap Buffers and post redisplay
 	glutSwapBuffers();
@@ -321,7 +332,7 @@ void drawMaze()
 				ModelViewMatrix.toIdentity();
 
 				Matrix4x4 m = cameraManip.apply(ModelViewMatrix);
-				m.translate(i*2, 0, j*-2);
+				m.translate(i*2, 0, j*2);
 				glUniformMatrix4fv(
 					MVMatrixUniformLocation,
 					1,
@@ -392,6 +403,27 @@ void drawTank()
 		updateCamera();
 	}
 
+	// Maze collision detection for falling
+    float offset = 0.0f; // Small offset to correct for floating point errors
+    int mazeX = (int)((tankPosition.x / 2) + offset);
+    int mazeZ = (int)((tankPosition.z / 2) + offset); // Corrected mazeZ calculation
+
+	bool inBounds = (mazeX >= 0 && mazeX < mazeHeight && mazeZ >= 0 && mazeZ < mazeWidth);
+
+    if (!inBounds || (inBounds && maze[mazeX][mazeZ] == 0)) {
+		std::cout << "Tank is falling!" << std::endl;
+		std::cout << "Tank position: " << tankPosition.x << ", " << tankPosition.y << ", " << tankPosition.z << std::endl;
+        // Apply gravity
+        tankYVelocity += tankGravity;
+        tankPosition.y += tankYVelocity;
+		tankFalling = true;
+    } else {
+        // Reset vertical velocity when on solid ground
+        tankYVelocity = 0.0f;
+		tankPosition.y = 0.75f;
+		tankFalling = false;
+    }
+
 	if(turretVelocity != 0.0f) {
 		turretRotation += turretVelocity;
 		
@@ -408,7 +440,7 @@ void drawTank()
 
 	Matrix4x4 m = cameraManip.apply(ModelViewMatrix);
 
-	m.translate(tankPosition.x, 0.75, tankPosition.z);
+	m.translate(tankPosition.x, tankPosition.y, tankPosition.z);
 	m.rotate(tankRotation, 0, 1, 0);
 	m.scale(0.5, 0.5, 0.5);
 
@@ -439,7 +471,7 @@ void drawTank()
 
 	Matrix4x4 o = cameraManip.apply(ModelViewMatrix);
 
-	o.translate(tankPosition.x, 0.75, tankPosition.z);
+	o.translate(tankPosition.x, tankPosition.y, tankPosition.z);
 	o.rotate(turretRotation, 0, 1, 0);
 	o.scale(0.5, 0.5, 0.5);
 
@@ -453,6 +485,10 @@ void drawTank()
 		vertexPositionAttribute,
 		vertexNormalAttribute, textureCoordinateAttribute
 	);
+
+	if (tankPosition.y < gameOverThreshold) {
+        gameOver = true;
+    }
 }
 
 void drawBall() {
@@ -495,6 +531,13 @@ void drawBall() {
 			{
 				score++;
 				maze[mazeX][mazeZ] = 1; // Remove the coin
+
+				// Remove the ball that hit the coin
+				ballActives.erase(ballActives.begin() + i);
+				ballPositions.erase(ballPositions.begin() + i);
+				ballVelocities.erase(ballVelocities.begin() + i);
+				i--; // Decrement i to account for the removed element
+				continue; // Skip the rest of the loop for this ball
 			}
 
 			if (
@@ -534,6 +577,21 @@ void keyboard(unsigned char key, int x, int y)
 		exit(0);
 	}
 
+	if (gameOver && key == 'r') {
+		// Reset game state
+		gameOver = false;
+		tankFalling = false;
+		tankPosition = Vector3f(0.0f, 0.0f, 0.0f);
+		tankRotation = 0.0f;
+		turretRotation = 0.0f;
+		tankYVelocity = 0.0f;
+		score = 0;
+		game_time = 0.0f;
+
+		// Reload the level
+		loadLevel("../levels/parallels.level");
+	}
+
 	glutPostRedisplay();
 
     keyStates[key] = true;
@@ -548,7 +606,8 @@ void keyUp(unsigned char key, int x, int y)
 
 //! Handle Keys
 void handleKeys()
-{    
+{
+	if (tankFalling) return; // We don't want the player to move a falling tank.
     if (fabs(tankVelocity) < 0.001f) {
         tankVelocity = 0.0f;
     }

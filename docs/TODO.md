@@ -8,9 +8,9 @@
 - [x] Movement for the tank.
 - [x] Momentum for tank.
 - [x] Launch ball from tank.
-- [ ] Ability to fall off of platform.
-- [ ] Collision to collect coins
-- [ ] Read maps from files.
-- [ ] UI to select maps
-- [ ] UI for score and time.
+- [x] Ability to fall off of platform.
+- [x] Collision to collect coins.
+- [x] Read maps from files.
+- [ ] UI to select maps.
+- [x] UI for score and time.
 - [ ] Shadows and reflections.
