@@ -1,4 +1,4 @@
-//!Includes
+// Includes.
 #include <GL/glew.h>
 #include <GL/glut.h>
 #include <Shader.h>
@@ -10,8 +10,9 @@
 #include <iostream>
 #include <math.h>
 #include <string>
+#include <vector>
 
-//!Function Prototypes
+// Function declarations.
 bool initGL(int argc, char** argv);
 void initShader();
 void initGeometry();					            //Function to init Geometry 
@@ -26,46 +27,51 @@ void Timer(int value);
 void initTexture(std::string filename, GLuint & textureID);
 void drawMaze();
 void drawTank();
-void updateCamera(); // New function to update the camera focus
+void drawBall();
+void fireBall();
+void updateCamera();
 int printOglError(char *file, int line);
 
 // Global variables.
 float game_time = 0.0f; // In game timer.
 
-// Screen size.
 int screenWidth   	        = 720;
 int screenHeight   	        = 720;
 
-//! Array of key states
 bool keyStates[256];
 
 // Tank position tracking
 Vector3f tankPosition = Vector3f(0.0f, 0.0f, 0.0f);
-float tankSpeed = 0.8f;
-float rotationSpeed = 1.0f;
 float tankRotation = 0.0f;
 float turretRotation = 0.0f;
 float wheelRotation = 0.0f;
 
-// New physics variables for acceleration/deceleration
-float tankVelocity = 0.0f;         // Current velocity
-float tankAcceleration = 0.005f;   // Acceleration rate
-float tankDeceleration = 0.01f;    // Deceleration rate
-float tankMaxVelocity = 0.02f;          // Maximum velocity
-float tankVelocityDecay = 0.9f;       // Natural velocity decay (friction)
+// Tank physics.
+float tankVelocity = 0.0f;
+float tankAcceleration = 0.005f;
+float tankDeceleration = 0.01f;
+float tankMaxVelocity = 0.02f;
+float tankVelocityDecay = 0.9f;
 
-// Tank rotate
+// Tank rotation physics.
 float tankRotationVelocity = 0.0f;
 float tankRotationAcceleration = 0.1f;
 float tankRotationMaxVelocity = 1.0f;
 float tankRotationVelocityDecay = 0.8f;
 
-// Turret rotate
-float turretVelocity = 0.0f;         // Current velocity
-float turretAcceleration = 0.1f;   // Acceleration rate
-float turretDeceleration = 0.2f;    // Deceleration rate
-float turretMaxVelocity = 1.0f;          // Maximum velocity
-float turretVelocityDecay = 0.8f;       // Natural velocity decay (friction)
+// Turret rotation physics.
+float turretVelocity = 0.0f;
+float turretAcceleration = 0.1f;
+float turretDeceleration = 0.2f;
+float turretMaxVelocity = 1.0f;
+float turretVelocityDecay = 0.8f;
+
+// Ball properties
+std::vector<Vector3f> ballPositions;
+std::vector<Vector3f> ballVelocities;
+std::vector<bool> ballActives;
+float ballSpeed = 0.5f;
+Vector3f gravity = Vector3f(0.0f, -0.01f, 0.0f);
 
 GLuint shaderProgramID;
 GLuint tankShaderProgramID;
@@ -85,29 +91,30 @@ Mesh tank_turret;
 
 Mesh box;
 Mesh coin;
+Mesh ball;
 
-// Hamvee texture.
 GLuint textureCoordinateAttribute; // Vertex Texcoord Attribute Location
 GLuint textureMapUniformLocation; // Texture Map Location
 GLuint vertexPositionAttribute;		// Vertex Position Attribute Location
-GLuint hamvee_texture; // OpenGL Texture
-GLuint box_texture; // OpenGL Texture
-GLuint coin_texture; // OpenGL Texture
+
+// OpenGL textures.
+GLuint hamvee_texture;
+GLuint box_texture;
+GLuint coin_texture;
+GLuint ball_texture;
 
 GLuint vertexNormalAttribute;	
 
-//Material Properties
-GLuint LightPositionUniformLocation;                // Light Position Uniform   
+GLuint LightPositionUniformLocation;
 GLuint AmbientUniformLocation;
 GLuint SpecularUniformLocation;
 GLuint SpecularPowerUniformLocation;
 
-Vector3f lightPosition= Vector3f(20.0,20.0,20.0);   // Light Position 
+Vector3f lightPosition= Vector3f(20.0,20.0,20.0);
 Vector3f ambient    = Vector3f(0.1,0.1,0.1);
 Vector3f specular   = Vector3f(0.0,1.0,0.0);
 float specularPower = 10.0;
 
-// Maze
 int maze[10][10] = {
 	{2,1,1,1,1,1,1,1,1,2},
 	{1,0,0,0,0,0,0,0,0,1},
@@ -145,6 +152,9 @@ int main(int argc, char** argv)
 
 	coin.loadOBJ("../models/coin.obj");
 	initTexture("../models/coin.bmp", coin_texture);
+
+	ball.loadOBJ("../models/ball.obj");
+	initTexture("../models/ball.bmp", ball_texture);
 
 	//Init Camera Manipultor
 	cameraManip.setPanTiltRadius(0.f,0.f,2.f);
@@ -212,7 +222,6 @@ void initShader()
 {
 	//Create shader
     shaderProgramID = Shader::LoadFromFile("shader.vert","shader.frag");
-
     
     // Get a handle for our vertex position buffer
 	vertexPositionAttribute = glGetAttribLocation(shaderProgramID, "aVertexPosition");
@@ -248,20 +257,16 @@ void initTexture(std::string filename, GLuint & textureID)
 	delete[] data;
 }
 
-
 //! Display Loop
 void display(void)
 {
 	game_time+= 1.0f; // Increment the in-game timer
 
-    //Handle keys
     handleKeys();
 
-    // Update camera to follow tank
-    updateCamera();
+    updateCamera(); // Update camera to look at tank.
 
-	//Set Viewport
-	glViewport(0,0,screenWidth, screenHeight);
+	glViewport(0,0,screenWidth, screenHeight); // Set viewport size.
 	
 	// Clear the screen
 	glClear( GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT );
@@ -278,14 +283,14 @@ void display(void)
    
     //Set Projection Matrix
     glUniformMatrix4fv(	
-		ProjectionUniformLocation,  //Uniform location
-		1,							//Number of Uniforms
-		false,						//Transpose Matrix
-		ProjectionMatrix.getPtr());	//Pointer to ModelViewMatrixValues
+		ProjectionUniformLocation,
+		1,
+		false,
+		ProjectionMatrix.getPtr());
 
 	drawMaze();
 	drawTank();
-
+	drawBall();
 
 	glUseProgram(0);
 
@@ -302,17 +307,15 @@ void drawMaze()
 		{
 			if (maze[i][j] >= 1)
 			{
-				//Apply Camera Manipluator to Set Model View Matrix on GPU
 				ModelViewMatrix.toIdentity();
 
-				//Apply Camera Manipluator to Set Model View Matrix on GPU
 				Matrix4x4 m = cameraManip.apply(ModelViewMatrix);
 				m.translate(i*2, 0, j*-2);
 				glUniformMatrix4fv(
-					MVMatrixUniformLocation, //Uniform location
-					1, //Number of Uniforms
-					false, //Transpose Matrix
-					m.getPtr()); //Pointer to Matrix Values
+					MVMatrixUniformLocation,
+					1,
+					false,
+					m.getPtr());
 
 				glUniform3f(LightPositionUniformLocation, lightPosition.x,lightPosition.y,lightPosition.z);
 				glUniform4f(AmbientUniformLocation, ambient.x, ambient.y, ambient.z, 1.0);
@@ -331,25 +334,22 @@ void drawMaze()
 			}
 			if (maze[i][j] >= 2)
 			{
-				//Apply Camera Manipluator to Set Model View Matrix on GPU
 				ModelViewMatrix.toIdentity();
 
-				//Apply Camera Manipluator to Set Model View Matrix on GPU
 				Matrix4x4 m = cameraManip.apply(ModelViewMatrix);
 				m.translate(i*2, 2, j*-2);
 				m.rotate(game_time, 0, 1, 0); 
 				glUniformMatrix4fv(
-					MVMatrixUniformLocation, //Uniform location
-					1, //Number of Uniforms
-					false, //Transpose Matrix
-					m.getPtr()); //Pointer to Matrix Values
+					MVMatrixUniformLocation,
+					1,
+					false,
+					m.getPtr());
 
 				glUniform3f(LightPositionUniformLocation, lightPosition.x,lightPosition.y,lightPosition.z);
 				glUniform4f(AmbientUniformLocation, ambient.x, ambient.y, ambient.z, 1.0);
 				glUniform4f(SpecularUniformLocation, specular.x, specular.y, specular.z, 1.0);
 				glUniform1f(SpecularPowerUniformLocation, specularPower);
 				
-				// Bind hamvee texture before drawing the tank chassis
 				glActiveTexture(GL_TEXTURE0);
 				glBindTexture(GL_TEXTURE_2D, coin_texture);
 				glUniform1i(textureMapUniformLocation, 0);
@@ -363,61 +363,50 @@ void drawMaze()
 	}
 }
 
-
 void drawTank()
 {
-	// Apply natural velocity decay (simulates friction)
+	// Decay velocity.
 	tankVelocity *= tankVelocityDecay;
 	turretVelocity *= turretVelocityDecay;
 	tankRotationVelocity *= tankRotationVelocityDecay;
 
-	// Apply current velocity to move the tank
+	// Move tank based on velocity.
 	if(tankVelocity != 0.0f) {
-		// Move tank based on current velocity in the direction it's facing
 		float radians = -tankRotation * (M_PI / 180.0f);
 		tankPosition.x -= sin(radians) * tankVelocity;
 		tankPosition.z += cos(radians) * tankVelocity;
 
-		// Rotate wheels proportional to velocity
 		wheelRotation += tankVelocity * 50.0f;
 		
-		// Update camera focus to follow tank
 		updateCamera();
 	}
 
 	if(turretVelocity != 0.0f) {
-		// Move tank based on current velocity in the direction it's facing
 		turretRotation += turretVelocity;
 		
-		// Update camera focus to follow tank
 		updateCamera();
 	}
 
 	if(tankRotationVelocity != 0.0f) {
-		// Move tank based on current velocity in the direction it's facing
 		tankRotation += tankRotationVelocity;
 		
-		// Update camera focus to follow tank
 		updateCamera();
 	}
 
-	//Apply Camera Manipluator to Set Model View Matrix on GPU
 	ModelViewMatrix.toIdentity();
 
-	//Apply Camera Manipluator to Set Model View Matrix on GPU
 	Matrix4x4 m = cameraManip.apply(ModelViewMatrix);
 
 	m.translate(tankPosition.x, 0.75, tankPosition.z);
-	m.rotate(tankRotation, 0, 1, 0); // Apply tank rotation around Y axis
+	m.rotate(tankRotation, 0, 1, 0);
 	m.scale(0.5, 0.5, 0.5);
 
 	glUniformMatrix4fv(
-		MVMatrixUniformLocation, //Uniform location
-		1, //Number of Uniforms
-		false, //Transpose Matrix
-		m.getPtr()); //Pointer to Matrix Values
+		MVMatrixUniformLocation,
+		1,
+		false,
+		m.getPtr());
 
-	// Bind box texture before drawing the box
 	glActiveTexture(GL_TEXTURE0);
 	glBindTexture(GL_TEXTURE_2D, hamvee_texture);
 	glUniform1i(textureMapUniformLocation, 0);
@@ -427,40 +416,27 @@ void drawTank()
 		vertexNormalAttribute, textureCoordinateAttribute
 	);
 
-	// //Apply Camera Manipluator to Set Model View Matrix on GPU
-	// Matrix4x4 n = cameraManip.apply(ModelViewMatrix);
-
-	// n.translate(tankPosition.x, 0.5, tankPosition.z);
-	// n.rotate(wheelRotation, cos(tankRotation), 0, sin(tankRotation)); // Apply tank rotation around Y axis
-
-	// glUniformMatrix4fv(
-	// 	MVMatrixUniformLocation, //Uniform location
-	// 	1, //Number of Uniforms
-	// 	false, //Transpose Matrix
-	// 	n.getPtr()); //Pointer to Matrix Values
-
-
 	tank_front_wheel.Draw(
 		vertexPositionAttribute,
 		vertexNormalAttribute, textureCoordinateAttribute
 	);
+
 	tank_back_wheel.Draw(
 		vertexPositionAttribute,
 		vertexNormalAttribute, textureCoordinateAttribute
 	);
 
-	//Apply Camera Manipluator to Set Model View Matrix on GPU
 	Matrix4x4 o = cameraManip.apply(ModelViewMatrix);
 
 	o.translate(tankPosition.x, 0.75, tankPosition.z);
-	o.rotate(turretRotation, 0, 1, 0); // Apply tank rotation around Y axis
+	o.rotate(turretRotation, 0, 1, 0);
 	o.scale(0.5, 0.5, 0.5);
 
 	glUniformMatrix4fv(
-		MVMatrixUniformLocation, //Uniform location
-		1, //Number of Uniforms
-		false, //Transpose Matrix
-		o.getPtr()); //Pointer to Matrix Values
+		MVMatrixUniformLocation,
+		1,
+		false,
+		o.getPtr());
 
 	tank_turret.Draw(
 		vertexPositionAttribute,
@@ -468,19 +444,77 @@ void drawTank()
 	);
 }
 
+void drawBall() {
+	for (int i = 0; i < ballPositions.size(); i++)
+	{
+		if (ballActives[i]) {
+			ModelViewMatrix.toIdentity();
+			Matrix4x4 m = cameraManip.apply(ModelViewMatrix);
+			m.translate(ballPositions[i].x, ballPositions[i].y, ballPositions[i].z);
+			m.scale(0.2, 0.2, 0.2);
+
+			glUniformMatrix4fv(
+				MVMatrixUniformLocation,
+				1,
+				false,
+				m.getPtr());
+
+			glUniform3f(LightPositionUniformLocation, lightPosition.x, lightPosition.y, lightPosition.z);
+			glUniform4f(AmbientUniformLocation, ambient.x, ambient.y, ambient.z, 1.0);
+			glUniform4f(SpecularUniformLocation, specular.x, specular.y, specular.z, 1.0);
+			glUniform1f(SpecularPowerUniformLocation, specularPower);
+
+			glActiveTexture(GL_TEXTURE0);
+			glBindTexture(GL_TEXTURE_2D, ball_texture);
+			glUniform1i(textureMapUniformLocation, 0);
+
+			ball.Draw(
+				vertexPositionAttribute,
+				vertexNormalAttribute, textureCoordinateAttribute
+			);
+
+			ballVelocities[i] = ballVelocities[i] + gravity;
+			ballPositions[i] = ballPositions[i] + ballVelocities[i];
+
+			if (
+				ballPositions[i].x > 20 || // If the ball is out of bounds...
+				ballPositions[i].x < -20 ||
+				ballPositions[i].y < 0 ||
+				ballPositions[i].z > 20 ||
+				ballPositions[i].z < -20)
+			{
+				// Get rid of the oldest ball in the array.
+				ballActives.erase(ballActives.begin() + i);
+				ballPositions.erase(ballPositions.begin() + i);
+				ballVelocities.erase(ballVelocities.begin() + i);
+				i--;
+			}
+		}
+	}
+}
+
+// Function to fire the ball
+void fireBall() {
+    ballActives.push_back(true);
+    float radians = -turretRotation * (M_PI / 180.0f);
+	float ballDistance = 3.0f;
+    ballPositions.push_back(tankPosition + Vector3f(-sin(radians) * ballDistance, 2.0f, cos(radians) * ballDistance)); // Initial position of the ball
+
+    // Calculate the direction based on turret rotation
+    radians = -turretRotation * (M_PI / 180.0f);
+    ballVelocities.push_back(Vector3f(-sin(radians), 0.0f, cos(radians)) * ballSpeed);
+}
 
 //! Keyboard Interaction
 void keyboard(unsigned char key, int x, int y)
 {
-	//Quits program when esc is pressed
-	if (key == 27)	//esc key code
+	if (key == 27) // Quit when ESC pressed.
 	{
 		exit(0);
 	}
 
 	glutPostRedisplay();
 
-	//Set key status
     keyStates[key] = true;
 }
 
@@ -494,7 +528,6 @@ void keyUp(unsigned char key, int x, int y)
 //! Handle Keys
 void handleKeys()
 {    
-    // If velocity is very small, set it to zero to avoid perpetual tiny movement
     if (fabs(tankVelocity) < 0.001f) {
         tankVelocity = 0.0f;
     }
@@ -503,44 +536,39 @@ void handleKeys()
         turretVelocity = 0.0f;
     }
     
-    if(keyStates['w'])
+    if(keyStates['w']) // Accelerate tank forward.
     {
-        // Accelerate forward
         tankVelocity += tankAcceleration;
-        // Cap maximum velocity
+
+		// Max movement speed.
+
         if(tankVelocity > tankMaxVelocity) {
             tankVelocity = tankMaxVelocity;
         }
     }
-    else if(keyStates['s'])
+    else if(keyStates['s']) // Accelerate backwards.
     {
-        // Accelerate backward
         tankVelocity -= tankAcceleration;
-        // Cap maximum reverse velocity
+
         if(tankVelocity < -tankMaxVelocity) {
             tankVelocity = -tankMaxVelocity;
         }
     }
     
-    if(keyStates['a'])
+    if(keyStates['a']) // Rotate left.
     {
-        // tankRotation += rotationSpeed; // Rotate left
-        // // Update camera focus after rotation
-        // turretRotation += rotationSpeed; // Rotate turret left
 		tankRotationVelocity += tankRotationAcceleration;
 		if (tankRotationVelocity > tankRotationMaxVelocity) tankRotationVelocity = tankRotationMaxVelocity;
 
-		turretVelocity += turretAcceleration; // Rotate right
-        // Update camera focus after rotation
+		// Also need to rotate the turret.
+
+		turretVelocity += turretAcceleration;
 		if (turretVelocity > turretMaxVelocity) turretVelocity = turretMaxVelocity;
 
         updateCamera();
     }
-    if(keyStates['d'])
+    if(keyStates['d']) // Rotate right.
     {
-        // tankRotation -= rotationSpeed; // Rotate right
-        // // Update camera focus after rotation
-        // turretRotation -= rotationSpeed; // Rotate turret right
 		tankRotationVelocity -= tankRotationAcceleration;
 		if (tankRotationVelocity < -tankRotationMaxVelocity) tankRotationVelocity = -tankRotationMaxVelocity;
 
@@ -548,26 +576,27 @@ void handleKeys()
 		if (turretVelocity < -turretMaxVelocity) turretVelocity = -turretMaxVelocity;
         updateCamera();
     }
-    if(keyStates['j'])
+    if(keyStates['j']) // Rotate turret left.
     {
-        turretVelocity += turretAcceleration; // Rotate right
-        // Update camera focus after rotation
+        turretVelocity += turretAcceleration;
 		if (turretVelocity > turretMaxVelocity) turretVelocity = turretMaxVelocity;
         updateCamera();
     }
-    if(keyStates['l'])
+    if(keyStates['l']) // Rotate turret right.
     {
-        turretVelocity -= turretAcceleration; // Rotate right
+        turretVelocity -= turretAcceleration;
 		if (turretVelocity < -turretMaxVelocity) turretVelocity = -turretMaxVelocity;
-        // Update camera focus after rotation
         updateCamera();
     }
+	if(keyStates['k'])
+	{
+		fireBall();
+	}
 }
 
 //! Mouse Interaction
 void mouse(int button, int state, int x, int y)
 {
-    // glutPostRedisplay(); 
 	cameraManip.handleMouse(button, state,x,y);
 	glutPostRedisplay();
 }
@@ -582,7 +611,6 @@ void motion(int x, int y)
 //! Timer Function
 void Timer(int value)
 {
-    
     //Call function again after 10 milli seconds
 	glutTimerFunc(10,Timer, 0);
 }
@@ -601,13 +629,9 @@ int printOglError(char *file, int line)
 return retCode;
 }
 
-// Update camera to follow tank
-void updateCamera() 
+void updateCamera() // Update the camera to focus on the tank.
 {
-    // Calculate the position where the tank is
-    Vector3f tankWorldPos = Vector3f(tankPosition.x, 0.75, tankPosition.z); // Adjust Y value to match approximate tank height
+    Vector3f tankWorldPos = Vector3f(tankPosition.x, 0.75, tankPosition.z);
     cameraManip.setFocus(tankWorldPos);
 	cameraManip.setPanTiltRadius(turretRotation/(180/M_PI), -1.0f, 5.0f);
-	// cameraManip.setFocus(tank_chassis.getMeshCentroid());
 }
-
