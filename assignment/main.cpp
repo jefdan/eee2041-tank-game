@@ -31,6 +31,7 @@ void drawBall();
 void fireBall();
 void updateCamera();
 int printOglError(char *file, int line);
+void fireBallTimer(int value);
 
 // Global variables.
 float game_time = 0.0f; // In game timer.
@@ -72,6 +73,8 @@ std::vector<Vector3f> ballVelocities;
 std::vector<bool> ballActives;
 float ballSpeed = 0.5f;
 Vector3f gravity = Vector3f(0.0f, -0.01f, 0.0f);
+
+bool canFire = true; // Add a boolean to control firing rate
 
 GLuint shaderProgramID;
 GLuint tankShaderProgramID;
@@ -588,9 +591,11 @@ void handleKeys()
 		if (turretVelocity < -turretMaxVelocity) turretVelocity = -turretMaxVelocity;
         updateCamera();
     }
-	if(keyStates['k'])
+	if(keyStates['k'] && canFire)
 	{
 		fireBall();
+		canFire = false;
+		glutTimerFunc(200, fireBallTimer, 0);
 	}
 }
 
@@ -634,4 +639,9 @@ void updateCamera() // Update the camera to focus on the tank.
     Vector3f tankWorldPos = Vector3f(tankPosition.x, 0.75, tankPosition.z);
     cameraManip.setFocus(tankWorldPos);
 	cameraManip.setPanTiltRadius(turretRotation/(180/M_PI), -1.0f, 5.0f);
+}
+
+void fireBallTimer(int value)
+{
+	canFire = true;
 }
