@@ -12,6 +12,8 @@
 #include <string>
 #include <vector>
 #include <fstream>
+#include <iomanip> // Required for setting precision
+#include <sstream> // Required for converting float to string
 
 // Function declarations.
 bool initGL(int argc, char** argv);
@@ -39,7 +41,7 @@ void render2dText(std::string text, float r, float g, float b, float x, float y)
 // Global variables.
 float game_time = 0.0f; // In game timer.
 int score = 0;
-std::string levelName = "home-sweet-home.level";
+std::string levelName = "parallels.level";
 
 int screenWidth   	        = 720;
 int screenHeight   	        = 720;
@@ -90,6 +92,8 @@ bool gameOver = false;
 bool tankFalling = false;
 
 bool canFire = true; // Add a boolean to control firing rate
+bool win = false;
+int initialCoins = 0;
 
 GLuint shaderProgramID;
 GLuint tankShaderProgramID;
@@ -279,7 +283,8 @@ void initTexture(std::string filename, GLuint & textureID)
 //! Display Loop
 void display(void)
 {
-	game_time+= 1.0f; // Increment the in-game timer
+	if (!win)
+		game_time+= 1.0f; // Increment the in-game timer
 
     handleKeys();
 
@@ -313,8 +318,14 @@ void display(void)
 
 	glUseProgram(0);
 
-	render2dText("Time: " + std::to_string(game_time/60), 1.0, 1.0, 1.0, -0.9, 0.9);
-	render2dText("Score: " + std::to_string(score), 1.0, 1.0, 1.0, -0.9, 0.8);
+	// Round game_time to 2 decimal places
+	float timeInSeconds = game_time / 60.0f;
+	std::stringstream stream;
+	stream << std::fixed << std::setprecision(2) << timeInSeconds;
+	std::string roundedTime = stream.str();
+
+	render2dText("Time: " + roundedTime, 1.0, 1.0, 1.0, -0.9, 0.9);
+	render2dText("Score: " + std::to_string(score) + "/" + std::to_string(initialCoins), 1.0, 1.0, 1.0, -0.9, 0.8);
 	render2dText("b for levels.", 1.0, 1.0, 1.0, -0.9, 0.7);
 
 	// render2dText("Maze Position: (" + std::to_string(mazeX) + ", " + std::to_string(mazeZ) + ")", 1.0, 1.0, 1.0, -0.9, 0.6);
@@ -322,6 +333,11 @@ void display(void)
 
 	if (gameOver) {
         render2dText("Game Over!", 1.0, 0.0, 0.0, -0.1, 0.0);
+		render2dText("Press 'r' to try again.", 1.0, 1.0, 1.0, -0.2, -0.1);
+    }
+
+	if (win) {
+        render2dText("You Win!", 0.0, 1.0, 0.0, -0.1, 0.0);
 		render2dText("Press 'r' to try again.", 1.0, 1.0, 1.0, -0.2, -0.1);
     }
 
@@ -557,6 +573,10 @@ void drawBall() {
 				continue; // Skip the rest of the loop for this ball
 			}
 
+			if (score == initialCoins) {
+				win = true;
+			}
+
 			if (
 				ballPositions[i].x > 20 || // If the ball is out of bounds...
 				ballPositions[i].x < -20 ||
@@ -594,7 +614,7 @@ void keyboard(unsigned char key, int x, int y)
 		exit(0);
 	}
 
-	if (gameOver && key == 'r') {
+	if ((gameOver || win) && key == 'r') {
 		// Reset game state
 		gameOver = false;
 		tankFalling = false;
@@ -604,6 +624,7 @@ void keyboard(unsigned char key, int x, int y)
 		tankYVelocity = 0.0f;
 		score = 0;
 		game_time = 0.0f;
+		win = false;
 
 		// Reload the level
 		loadLevel(("../levels/" + levelName).c_str());
@@ -625,9 +646,11 @@ void keyUp(unsigned char key, int x, int y)
 void handleKeys()
 {
 	if (tankFalling) return; // We don't want the player to move a falling tank.
-    if (fabs(tankVelocity) < 0.001f) {
-        tankVelocity = 0.0f;
-    }
+	if (win) return;
+	if (fabs(tankVelocity) < 0.001f)
+	{
+		tankVelocity = 0.0f;
+	}
 
 	if (fabs(turretVelocity) < 0.001f) {
         turretVelocity = 0.0f;
@@ -781,6 +804,16 @@ void loadLevel(const char* filename) {
             maze[i][j] = tempMaze[i][j];
         }
     }
+
+	// Count initial coins
+	initialCoins = 0;
+	for (int i = 0; i < mazeHeight; ++i) {
+		for (int j = 0; j < mazeWidth; ++j) {
+			if (maze[i][j] == 2) {
+				initialCoins++;
+			}
+		}
+	}
 
     file.close();
 }
