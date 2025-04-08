@@ -39,9 +39,15 @@ void render2dText(std::string text, float r, float g, float b, float x, float y)
 // Global variables.
 float game_time = 0.0f; // In game timer.
 int score = 0;
+std::string levelName = "home-sweet-home.level";
 
 int screenWidth   	        = 720;
 int screenHeight   	        = 720;
+
+float mazeX = 0.0;
+float mazeZ = 0.0;
+int mazeValue = 0;
+bool shouldFall = false;
 
 bool keyStates[256];
 
@@ -53,23 +59,23 @@ float wheelRotation = 0.0f;
 
 // Tank physics.
 float tankVelocity = 0.0f;
-float tankAcceleration = 0.005f;
+float tankAcceleration = 0.05f;
 float tankDeceleration = 0.01f;
-float tankMaxVelocity = 0.02f;
-float tankVelocityDecay = 0.9f;
+float tankMaxVelocity = 0.08f;
+float tankVelocityDecay = 0.91f;
 
 // Tank rotation physics.
 float tankRotationVelocity = 0.0f;
-float tankRotationAcceleration = 0.1f;
-float tankRotationMaxVelocity = 1.0f;
-float tankRotationVelocityDecay = 0.8f;
+float tankRotationAcceleration = 0.2f;
+float tankRotationMaxVelocity = 2.0f;
+float tankRotationVelocityDecay = 0.91f;
 
 // Turret rotation physics.
 float turretVelocity = 0.0f;
-float turretAcceleration = 0.1f;
+float turretAcceleration = 0.2f;
 float turretDeceleration = 0.2f;
-float turretMaxVelocity = 1.0f;
-float turretVelocityDecay = 0.8f;
+float turretMaxVelocity = 2.0f;
+float turretVelocityDecay = 0.91f;
 
 // Ball properties
 std::vector<Vector3f> ballPositions;
@@ -145,7 +151,7 @@ int main(int argc, char** argv)
         keyStates[i] = false;
 
     // Load the level
-    loadLevel("../levels/parallels.level");
+    loadLevel(("../levels/" + levelName).c_str());
     
     // Setting up my programme.
 	tank_chassis.loadOBJ("../models/chassis.obj");
@@ -311,6 +317,9 @@ void display(void)
 	render2dText("Score: " + std::to_string(score), 1.0, 1.0, 1.0, -0.9, 0.8);
 	render2dText("b for levels.", 1.0, 1.0, 1.0, -0.9, 0.7);
 
+	// render2dText("Maze Position: (" + std::to_string(mazeX) + ", " + std::to_string(mazeZ) + ")", 1.0, 1.0, 1.0, -0.9, 0.6);
+    // render2dText("Maze Value: " + std::to_string(mazeValue), 1.0, 1.0, 1.0, -0.9, 0.5);
+
 	if (gameOver) {
         render2dText("Game Over!", 1.0, 0.0, 0.0, -0.1, 0.0);
 		render2dText("Press 'r' to try again.", 1.0, 1.0, 1.0, -0.2, -0.1);
@@ -359,7 +368,7 @@ void drawMaze()
 				ModelViewMatrix.toIdentity();
 
 				Matrix4x4 m = cameraManip.apply(ModelViewMatrix);
-				m.translate(i*2, 2, j*-2);
+				m.translate(i*2, 2, j*2);
 				m.rotate(game_time, 0, 1, 0); 
 				glUniformMatrix4fv(
 					MVMatrixUniformLocation,
@@ -404,15 +413,22 @@ void drawTank()
 	}
 
 	// Maze collision detection for falling
-    float offset = 0.0f; // Small offset to correct for floating point errors
-    int mazeX = (int)((tankPosition.x / 2) + offset);
-    int mazeZ = (int)((tankPosition.z / 2) + offset); // Corrected mazeZ calculation
+    mazeX = ((tankPosition.x / 2));
+    mazeZ = ((tankPosition.z / 2));
 
-	bool inBounds = (mazeX >= 0 && mazeX < mazeHeight && mazeZ >= 0 && mazeZ < mazeWidth);
+	int roundedMazeX = (int)std::round(mazeX);
+	int roundedMazeZ = (int)std::round(mazeZ);
 
-    if (!inBounds || (inBounds && maze[mazeX][mazeZ] == 0)) {
-		std::cout << "Tank is falling!" << std::endl;
-		std::cout << "Tank position: " << tankPosition.x << ", " << tankPosition.y << ", " << tankPosition.z << std::endl;
+	bool inBounds = (roundedMazeX >= 0 && roundedMazeX < mazeHeight && roundedMazeZ >= 0 && roundedMazeZ < mazeWidth);
+
+	// Only update mazeValue if the player is in bounds, otherwise
+	// we could get a segfault.
+	if (inBounds)
+		mazeValue = maze[roundedMazeX][roundedMazeZ];
+
+	bool shouldFall = !inBounds || (inBounds && (mazeValue == 0));
+
+	if (shouldFall) {
         // Apply gravity
         tankYVelocity += tankGravity;
         tankPosition.y += tankYVelocity;
@@ -498,7 +514,8 @@ void drawBall() {
 			ModelViewMatrix.toIdentity();
 			Matrix4x4 m = cameraManip.apply(ModelViewMatrix);
 			m.translate(ballPositions[i].x, ballPositions[i].y, ballPositions[i].z);
-			m.scale(0.2, 0.2, 0.2);
+			m.scale(0.1, 0.1, 0.1);
+			m.rotate(game_time*10, 0, 1, 1); 
 
 			glUniformMatrix4fv(
 				MVMatrixUniformLocation,
@@ -525,7 +542,7 @@ void drawBall() {
 
 			// Collision detection with coins
 			int mazeX = (int)(ballPositions[i].x / 2);
-			int mazeZ = -(int)(ballPositions[i].z / 2);
+			int mazeZ = (int)(ballPositions[i].z / 2);
 
 			if (mazeX >= 0 && mazeX < mazeHeight && mazeZ >= 0 && mazeZ < mazeWidth && maze[mazeX][mazeZ] == 2)
 			{
@@ -561,7 +578,7 @@ void drawBall() {
 void fireBall() {
     ballActives.push_back(true);
     float radians = -turretRotation * (M_PI / 180.0f);
-	float ballDistance = 3.0f;
+	float ballDistance = 0.0f;
     ballPositions.push_back(tankPosition + Vector3f(-sin(radians) * ballDistance, 2.0f, cos(radians) * ballDistance)); // Initial position of the ball
 
     // Calculate the direction based on turret rotation
@@ -589,7 +606,7 @@ void keyboard(unsigned char key, int x, int y)
 		game_time = 0.0f;
 
 		// Reload the level
-		loadLevel("../levels/parallels.level");
+		loadLevel(("../levels/" + levelName).c_str());
 	}
 
 	glutPostRedisplay();

@@ -14,3 +14,4 @@
 - [ ] UI to select maps.
 - [x] UI for score and time.
 - [ ] Shadows and reflections.
+- [ ] Make the wheels rotate.
