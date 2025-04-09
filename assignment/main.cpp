@@ -61,22 +61,22 @@ float wheelRotation = 0.0f;
 
 // Tank physics.
 float tankVelocity = 0.0f;
-float tankAcceleration = 0.05f;
+float tankAcceleration = 0.005f;
 float tankDeceleration = 0.01f;
 float tankMaxVelocity = 0.08f;
 float tankVelocityDecay = 0.91f;
 
 // Tank rotation physics.
 float tankRotationVelocity = 0.0f;
-float tankRotationAcceleration = 0.2f;
-float tankRotationMaxVelocity = 2.0f;
+float tankRotationAcceleration = 0.05f;
+float tankRotationMaxVelocity = 5.0f;
 float tankRotationVelocityDecay = 0.91f;
 
 // Turret rotation physics.
 float turretVelocity = 0.0f;
-float turretAcceleration = 0.2f;
+float turretAcceleration = 0.05f;
 float turretDeceleration = 0.2f;
-float turretMaxVelocity = 2.0f;
+float turretMaxVelocity = 5.0f;
 float turretVelocityDecay = 0.91f;
 
 // Ball properties
@@ -283,7 +283,7 @@ void initTexture(std::string filename, GLuint & textureID)
 //! Display Loop
 void display(void)
 {
-	if (!win)
+	if (!win && !tankFalling)
 		game_time+= 1.0f; // Increment the in-game timer
 
     handleKeys();
@@ -338,7 +338,7 @@ void display(void)
 
 	if (win) {
         render2dText("You Win!", 0.0, 1.0, 0.0, -0.1, 0.0);
-		render2dText("Press 'r' to try again.", 1.0, 1.0, 1.0, -0.2, -0.1);
+		render2dText("Press 'r' to go again.", 1.0, 1.0, 1.0, -0.2, -0.1);
     }
 
 	//Swap Buffers and post redisplay
@@ -570,11 +570,11 @@ void drawBall() {
 				ballPositions.erase(ballPositions.begin() + i);
 				ballVelocities.erase(ballVelocities.begin() + i);
 				i--; // Decrement i to account for the removed element
+				
+				if (score == initialCoins) {
+					win = true;
+				}
 				continue; // Skip the rest of the loop for this ball
-			}
-
-			if (score == initialCoins) {
-				win = true;
 			}
 
 			if (
