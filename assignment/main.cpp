@@ -31,6 +31,7 @@ void initTexture(std::string filename, GLuint & textureID);
 void drawMaze();
 void drawTank();
 void drawBall();
+void drawSkybox();
 void fireBall();
 void updateCamera();
 int printOglError(char *file, int line);
@@ -41,7 +42,8 @@ void render2dText(std::string text, float r, float g, float b, float x, float y)
 // Global variables.
 float game_time = 0.0f; // In game timer.
 int score = 0;
-std::string levelName = "parallels.level";
+std::string levelName = "holy-grail.level";
+std::string reloadBar;
 
 int screenWidth   	        = 720;
 int screenHeight   	        = 720;
@@ -93,9 +95,11 @@ bool tankFalling = false;
 
 bool canFire = true; // Add a boolean to control firing rate
 bool win = false;
+bool help = false;
 int initialCoins = 0;
 
 GLuint shaderProgramID;
+GLuint shinyShaderProgramID;
 GLuint tankShaderProgramID;
 
 // Viewing/Camera.
@@ -114,27 +118,44 @@ Mesh tank_turret;
 Mesh box;
 Mesh coin;
 Mesh ball;
+Mesh skybox;
 
 GLuint textureCoordinateAttribute; // Vertex Texcoord Attribute Location
 GLuint textureMapUniformLocation; // Texture Map Location
 GLuint vertexPositionAttribute;		// Vertex Position Attribute Location
 
+GLuint shinyTextureCoordinateAttribute; // Vertex Texcoord Attribute Location
+GLuint shinyTextureMapUniformLocation; // Texture Map Location
+GLuint shinyVertexPositionAttribute;		// Vertex Position Attribute Location
+
 // OpenGL textures.
-GLuint hamvee_texture;
-GLuint box_texture;
-GLuint coin_texture;
-GLuint ball_texture;
+GLuint hamvee_texture; // Add this line
+GLuint box_texture;    // Add this line
+GLuint coin_texture;   // Add this line
+GLuint ball_texture;   // Add this line
+GLuint skybox_texture; // Add this line
 
 GLuint vertexNormalAttribute;	
 
-GLuint LightPositionUniformLocation;
+GLuint shinyVertexNormalAttribute;	
+
+GLuint LightDirectionUniformLocation; // Renamed
+GLuint ColourUniformLocation;         // Added
+GLuint LightColorUniformLocation;     // Added
 GLuint AmbientUniformLocation;
 GLuint SpecularUniformLocation;
 GLuint SpecularPowerUniformLocation;
 
-Vector3f lightPosition= Vector3f(20.0,20.0,20.0);
-Vector3f ambient    = Vector3f(0.1,0.1,0.1);
-Vector3f specular   = Vector3f(0.0,1.0,0.0);
+GLuint ShinyLightPositionUniformLocation;
+GLuint ShinyAmbientUniformLocation;
+GLuint ShinySpecularUniformLocation;
+GLuint ShinySpecularPowerUniformLocation;
+
+Vector3f lightDirection = Vector3f(1.0,1.0,1.0); // Example direction
+Vector3f objectColor    = Vector3f(1.0, 1.0, 1.0);  // Default white color
+Vector3f lightColor     = Vector3f(0.7, 0.7, 0.6);  // Default white light
+Vector3f ambient    = Vector3f(0.5,0.5,0.5);
+Vector3f specular   = Vector3f(1.0,1.0,1.0); // Changed from green to white
 float specularPower = 10.0;
 
 int** maze;
@@ -172,6 +193,9 @@ int main(int argc, char** argv)
 
 	ball.loadOBJ("../models/ball.obj");
 	initTexture("../models/ball.bmp", ball_texture);
+
+	skybox.loadOBJ("../models/cube.obj");
+	initTexture("../models/Crate.bmp", skybox_texture);
 
 	//Init Camera Manipultor
 	cameraManip.setPanTiltRadius(0.f,0.f,2.f);
@@ -244,18 +268,28 @@ bool initGL(int argc, char** argv)
 void initShader()
 {
 	//Create shader
-    shaderProgramID = Shader::LoadFromFile("shader.vert","shader.frag");
+    shaderProgramID = Shader::LoadFromFile("shinyShader.vert","shinyShader.frag");
+
+	shinyShaderProgramID = Shader::LoadFromFile("shinyShader.vert","shinyShader.frag");
     
     // Get a handle for our vertex position buffer
 	vertexPositionAttribute = glGetAttribLocation(shaderProgramID, "aVertexPosition");
 	vertexNormalAttribute = glGetAttribLocation(shaderProgramID,    "aVertexNormal");
 	textureCoordinateAttribute = glGetAttribLocation(shaderProgramID, "aVertexTexcoord");
 	textureMapUniformLocation = glGetUniformLocation(shaderProgramID, "TextureMap_uniform");
+
+	// Get a handle for our vertex position buffer (shiny)
+	shinyVertexPositionAttribute = glGetAttribLocation(shinyShaderProgramID, "aVertexPosition");
+	shinyVertexNormalAttribute = glGetAttribLocation(shinyShaderProgramID,    "aVertexNormal");
+	shinyTextureCoordinateAttribute = glGetAttribLocation(shinyShaderProgramID, "aVertexTexcoord");
+	shinyTextureMapUniformLocation = glGetUniformLocation(shinyShaderProgramID, "TextureMap_uniform");
 	
 	// Get ModelView Matrix uniform location
 	MVMatrixUniformLocation = glGetUniformLocation(shaderProgramID, "MVMatrix_uniform"); 
 	ProjectionUniformLocation = glGetUniformLocation(shaderProgramID, "ProjMatrix_uniform"); 
-	LightPositionUniformLocation    = glGetUniformLocation(shaderProgramID, "LightPosition_uniform"); 
+	LightDirectionUniformLocation   = glGetUniformLocation(shaderProgramID, "LightDirection_uniform"); // Renamed
+	ColourUniformLocation           = glGetUniformLocation(shaderProgramID, "Colour_uniform");         // Added
+	LightColorUniformLocation       = glGetUniformLocation(shaderProgramID, "LightColor_uniform");     // Added
 	AmbientUniformLocation          = glGetUniformLocation(shaderProgramID, "Ambient_uniform"); 
 	SpecularUniformLocation         = glGetUniformLocation(shaderProgramID, "Specular_uniform"); 
 	SpecularPowerUniformLocation    = glGetUniformLocation(shaderProgramID, "SpecularPower_uniform");
@@ -303,7 +337,7 @@ void display(void)
 	glActiveTexture(GL_TEXTURE0);
 
 	//Projection Matrix - Perspective Projection
-    ProjectionMatrix.perspective(90, 1.0, 0.0001, 100.0);
+    ProjectionMatrix.perspective(90, 1.0, 0.0001, 10000.0);
    
     //Set Projection Matrix
     glUniformMatrix4fv(	
@@ -315,6 +349,7 @@ void display(void)
 	drawMaze();
 	drawTank();
 	drawBall();
+	drawSkybox();
 
 	glUseProgram(0);
 
@@ -326,7 +361,12 @@ void display(void)
 
 	render2dText("Time: " + roundedTime, 1.0, 1.0, 1.0, -0.9, 0.9);
 	render2dText("Score: " + std::to_string(score) + "/" + std::to_string(initialCoins), 1.0, 1.0, 1.0, -0.9, 0.8);
-	render2dText("b for levels.", 1.0, 1.0, 1.0, -0.9, 0.7);
+	render2dText("l[e]vels", 1.0, 1.0, 1.0, -0.9, 0.7);
+	render2dText("[h]elp", 1.0, 1.0, 1.0, -0.9, 0.6);
+
+	// reloadBar = "[=====]";
+
+	render2dText(reloadBar.c_str(), 1.0, 1.0, 1.0, 0.0, 0.0);
 
 	// render2dText("Maze Position: (" + std::to_string(mazeX) + ", " + std::to_string(mazeZ) + ")", 1.0, 1.0, 1.0, -0.9, 0.6);
     // render2dText("Maze Value: " + std::to_string(mazeValue), 1.0, 1.0, 1.0, -0.9, 0.5);
@@ -341,6 +381,17 @@ void display(void)
 		render2dText("Press 'r' to go again.", 1.0, 1.0, 1.0, -0.2, -0.1);
     }
 
+	if (help) {
+		render2dText("[w] move tank forwards", 1.0, 1.0, 1.0, -0.9, 0.3);
+		render2dText("[a] rotate tank left", 1.0, 1.0, 1.0, -0.9, 0.2);
+		render2dText("[s] move tank backwards", 1.0, 1.0, 1.0, -0.9, 0.1);
+		render2dText("[d] rotate tank right", 1.0, 1.0, 1.0, -0.9, 0.0);
+
+		render2dText("[j] rotate turret left", 1.0, 1.0, 1.0, -0.9, -0.1);
+		render2dText("[k] fire turret", 1.0, 1.0, 1.0, -0.9, -0.2);
+		render2dText("[l] rotate turret right", 1.0, 1.0, 1.0, -0.9, -0.3);
+	}
+
 	//Swap Buffers and post redisplay
 	glutSwapBuffers();
 	glutPostRedisplay();
@@ -352,6 +403,13 @@ void drawMaze()
 	{
 		for (int j = 0; j < mazeWidth; j++)
 		{
+			// 3 = spawnpoint
+			if (maze[i][j] == 3) {
+				tankPosition.x = i*2;
+				tankPosition.z = j*2;
+				tankPosition.y = 0.75f;
+				maze[i][j] = 1;
+			}
 			if (maze[i][j] >= 1)
 			{
 				ModelViewMatrix.toIdentity();
@@ -364,7 +422,9 @@ void drawMaze()
 					false,
 					m.getPtr());
 
-				glUniform3f(LightPositionUniformLocation, lightPosition.x,lightPosition.y,lightPosition.z);
+				glUniform3f(LightDirectionUniformLocation, lightDirection.x, lightDirection.y, lightDirection.z); // Use direction
+				glUniform3f(ColourUniformLocation, 1.0f, 1.0f, 1.0f); // Set object color (e.g., white for crate)
+				glUniform3f(LightColorUniformLocation, lightColor.x, lightColor.y, lightColor.z); // Set light color
 				glUniform4f(AmbientUniformLocation, ambient.x, ambient.y, ambient.z, 1.0);
 				glUniform4f(SpecularUniformLocation, specular.x, specular.y, specular.z, 1.0);
 				glUniform1f(SpecularPowerUniformLocation, specularPower);
@@ -384,7 +444,7 @@ void drawMaze()
 				ModelViewMatrix.toIdentity();
 
 				Matrix4x4 m = cameraManip.apply(ModelViewMatrix);
-				m.translate(i*2, 2, j*2);
+				m.translate(i*2, 2 + (sin(game_time/100)/5), j*2);
 				m.rotate(game_time, 0, 1, 0); 
 				glUniformMatrix4fv(
 					MVMatrixUniformLocation,
@@ -392,7 +452,9 @@ void drawMaze()
 					false,
 					m.getPtr());
 
-				glUniform3f(LightPositionUniformLocation, lightPosition.x,lightPosition.y,lightPosition.z);
+				glUniform3f(LightDirectionUniformLocation, lightDirection.x, lightDirection.y, lightDirection.z); // Use direction
+				glUniform3f(ColourUniformLocation, 1.0f, 0.84f, 0.0f); // Set object color (e.g., gold for coin)
+				glUniform3f(LightColorUniformLocation, lightColor.x, lightColor.y, lightColor.z); // Set light color
 				glUniform4f(AmbientUniformLocation, ambient.x, ambient.y, ambient.z, 1.0);
 				glUniform4f(SpecularUniformLocation, specular.x, specular.y, specular.z, 1.0);
 				glUniform1f(SpecularPowerUniformLocation, specularPower);
@@ -437,12 +499,25 @@ void drawTank()
 
 	bool inBounds = (roundedMazeX >= 0 && roundedMazeX < mazeHeight && roundedMazeZ >= 0 && roundedMazeZ < mazeWidth);
 
+	if (inBounds && maze[roundedMazeX][roundedMazeZ] == 2 && !tankFalling) {
+		// Coin collision detection
+		score++;
+		maze[roundedMazeX][roundedMazeZ] = 1; // Remove the coin
+
+		if (score == initialCoins) {
+			win = true;
+		}
+	}
+
 	// Only update mazeValue if the player is in bounds, otherwise
 	// we could get a segfault.
-	if (inBounds)
+	if (inBounds) {
 		mazeValue = maze[roundedMazeX][roundedMazeZ];
+	} else {
+		mazeValue = 0; // Default to 0 if out of bounds
+	}
 
-	bool shouldFall = !inBounds || (inBounds && (mazeValue == 0));
+	bool shouldFall = !inBounds || (mazeValue == 0);
 
 	if (shouldFall) {
         // Apply gravity
@@ -482,6 +557,13 @@ void drawTank()
 		false,
 		m.getPtr());
 
+	glUniform3f(LightDirectionUniformLocation, lightDirection.x, lightDirection.y, lightDirection.z);
+	glUniform3f(ColourUniformLocation, 0.8f, 0.8f, 0.8f); // Base color for tank
+	glUniform3f(LightColorUniformLocation, lightColor.x, lightColor.y, lightColor.z);
+	glUniform4f(AmbientUniformLocation, ambient.x, ambient.y, ambient.z, 1.0);
+	glUniform4f(SpecularUniformLocation, specular.x, specular.y, specular.z, 1.0);
+	glUniform1f(SpecularPowerUniformLocation, specularPower);
+
 	glActiveTexture(GL_TEXTURE0);
 	glBindTexture(GL_TEXTURE_2D, hamvee_texture);
 	glUniform1i(textureMapUniformLocation, 0);
@@ -513,6 +595,17 @@ void drawTank()
 		false,
 		o.getPtr());
 
+	glUniform3f(LightDirectionUniformLocation, lightDirection.x, lightDirection.y, lightDirection.z);
+	glUniform3f(ColourUniformLocation, 0.8f, 0.8f, 0.8f); // Base color for tank
+	glUniform3f(LightColorUniformLocation, lightColor.x, lightColor.y, lightColor.z);
+	glUniform4f(AmbientUniformLocation, ambient.x, ambient.y, ambient.z, 1.0);
+	glUniform4f(SpecularUniformLocation, specular.x, specular.y, specular.z, 1.0);
+	glUniform1f(SpecularPowerUniformLocation, specularPower);
+
+	glActiveTexture(GL_TEXTURE0);
+	glBindTexture(GL_TEXTURE_2D, hamvee_texture);
+	glUniform1i(textureMapUniformLocation, 0);
+
 	tank_turret.Draw(
 		vertexPositionAttribute,
 		vertexNormalAttribute, textureCoordinateAttribute
@@ -539,7 +632,9 @@ void drawBall() {
 				false,
 				m.getPtr());
 
-			glUniform3f(LightPositionUniformLocation, lightPosition.x, lightPosition.y, lightPosition.z);
+			glUniform3f(LightDirectionUniformLocation, lightDirection.x, lightDirection.y, lightDirection.z); // Use direction
+			glUniform3f(ColourUniformLocation, 0.5f, 0.5f, 0.5f); // Set object color (e.g., grey for ball)
+			glUniform3f(LightColorUniformLocation, lightColor.x, lightColor.y, lightColor.z); // Set light color
 			glUniform4f(AmbientUniformLocation, ambient.x, ambient.y, ambient.z, 1.0);
 			glUniform4f(SpecularUniformLocation, specular.x, specular.y, specular.z, 1.0);
 			glUniform1f(SpecularPowerUniformLocation, specularPower);
@@ -594,6 +689,35 @@ void drawBall() {
 	}
 }
 
+void drawSkybox() {
+	ModelViewMatrix.toIdentity();
+	Matrix4x4 m = cameraManip.apply(ModelViewMatrix);
+	m.translate(0, 0, 0);
+	m.scale(256, 256, 256);
+
+	glUniformMatrix4fv(
+		MVMatrixUniformLocation,
+		1,
+		false,
+		m.getPtr());
+
+	glUniform3f(LightDirectionUniformLocation, lightDirection.x, lightDirection.y, lightDirection.z);
+	glUniform3f(ColourUniformLocation, 1.0f, 1.0f, 1.0f); // White color for skybox texture
+	glUniform3f(LightColorUniformLocation, lightColor.x, lightColor.y, lightColor.z);
+	glUniform4f(AmbientUniformLocation, 0.8f, 0.8f, 0.8f, 1.0); // Higher ambient for skybox?
+	glUniform4f(SpecularUniformLocation, 0.0f, 0.0f, 0.0f, 1.0); // No specular for skybox
+	glUniform1f(SpecularPowerUniformLocation, 0.0f);
+
+	glActiveTexture(GL_TEXTURE0);
+	glBindTexture(GL_TEXTURE_2D, skybox_texture);
+	glUniform1i(textureMapUniformLocation, 0);
+
+	skybox.Draw(
+		vertexPositionAttribute,
+		vertexNormalAttribute, textureCoordinateAttribute
+	);
+}
+
 // Function to fire the ball
 void fireBall() {
     ballActives.push_back(true);
@@ -628,6 +752,10 @@ void keyboard(unsigned char key, int x, int y)
 
 		// Reload the level
 		loadLevel(("../levels/" + levelName).c_str());
+	}
+
+	if(key == 'h') {
+		help = !help;
 	}
 
 	glutPostRedisplay();
