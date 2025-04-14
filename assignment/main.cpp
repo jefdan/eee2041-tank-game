@@ -195,7 +195,7 @@ int main(int argc, char** argv)
 	initTexture("../models/ball.bmp", ball_texture);
 
 	skybox.loadOBJ("../models/cube.obj");
-	initTexture("../models/Crate.bmp", skybox_texture);
+	initTexture("../models/skybox/left.bmp", skybox_texture);
 
 	//Init Camera Manipultor
 	cameraManip.setPanTiltRadius(0.f,0.f,2.f);
