@@ -395,10 +395,11 @@ void display(void)
 		render2dText("[a] rotate tank left", 1.0, 1.0, 1.0, -0.9, 0.2);
 		render2dText("[s] move tank backwards", 1.0, 1.0, 1.0, -0.9, 0.1);
 		render2dText("[d] rotate tank right", 1.0, 1.0, 1.0, -0.9, 0.0);
+		render2dText("[space] jump", 1.0, 1.0, 1.0, -0.9, -0.1);
 
-		render2dText("[j] rotate turret left", 1.0, 1.0, 1.0, -0.9, -0.1);
-		render2dText("[k] fire turret", 1.0, 1.0, 1.0, -0.9, -0.2);
-		render2dText("[l] rotate turret right", 1.0, 1.0, 1.0, -0.9, -0.3);
+		render2dText("[j] rotate turret left", 1.0, 1.0, 1.0, -0.9, -0.2);
+		render2dText("[k] fire turret", 1.0, 1.0, 1.0, -0.9, -0.3);
+		render2dText("[l] rotate turret right", 1.0, 1.0, 1.0, -0.9, -0.4);
 	}
 
     // Display level selection menu if active
@@ -519,16 +520,6 @@ void drawTank()
 
 	bool inBounds = (roundedMazeX >= 0 && roundedMazeX < mazeHeight && roundedMazeZ >= 0 && roundedMazeZ < mazeWidth);
 
-	if (inBounds && maze[roundedMazeX][roundedMazeZ] == 2 && !tankFalling) {
-		// Coin collision detection
-		score++;
-		maze[roundedMazeX][roundedMazeZ] = 1; // Remove the coin
-
-		if (score == initialCoins) {
-			win = true;
-		}
-	}
-
 	// Only update mazeValue if the player is in bounds, otherwise
 	// we could get a segfault.
 	if (inBounds) {
@@ -537,19 +528,45 @@ void drawTank()
 		mazeValue = 0; // Default to 0 if out of bounds
 	}
 
-	bool shouldFall = !inBounds || (mazeValue == 0);
+	// Determine if the tank *should* be falling based on position
+	bool onSolidGround = inBounds && (mazeValue >= 1);
 
-	if (shouldFall) {
-        // Apply gravity
-        tankYVelocity += tankGravity;
-        tankPosition.y += tankYVelocity;
-		tankFalling = true;
-    } else {
-        // Reset vertical velocity when on solid ground
-        tankYVelocity = 0.0f;
-		tankPosition.y = 0.75f;
-		tankFalling = false;
-    }
+	// Apply gravity if the tank is falling (jumped or over an edge)
+	if (tankFalling) {
+		tankYVelocity += tankGravity;
+		tankPosition.y += tankYVelocity;
+	}
+
+	// Check for landing or falling off edge
+	if (onSolidGround) {
+		// Check if the tank has landed after falling/jumping
+		if (tankFalling && tankPosition.y <= 0.75f) {
+			tankYVelocity = 0.0f;
+			tankPosition.y = 0.75f;
+			tankFalling = false;
+		}
+		// If not currently falling but on solid ground, ensure correct height
+		else if (!tankFalling) {
+			tankPosition.y = 0.75f;
+		}
+
+		// Coin collision detection (only when grounded)
+		if (maze[roundedMazeX][roundedMazeZ] == 2) {
+			score++;
+			maze[roundedMazeX][roundedMazeZ] = 1; // Remove the coin
+			if (score == initialCoins) {
+				win = true;
+			}
+		}
+	} else {
+		// If not on solid ground, ensure the tank is marked as falling
+		if (!tankFalling) {
+			tankFalling = true;
+			// Optional: Give a small initial downward velocity if falling off edge
+			// tankYVelocity = 0.0f; // Or a small negative value
+		}
+	}
+
 
 	if(turretVelocity != 0.0f) {
 		turretRotation += turretVelocity;
@@ -819,6 +836,13 @@ void keyboard(unsigned char key, int x, int y)
         if(key == 'e') {
             showLevelSelection = true; // Show level selection screen
             help = false; // Hide help when showing levels
+        }
+
+        // Jump mechanic: Spacebar (ASCII 32)
+        if (key == 32 && !tankFalling && !gameOver && !win) {
+            tankYVelocity = 0.03f; // Set initial upward velocity for jump
+			tankVelocity = 0.40f;
+            tankFalling = true; // Tank is now in the air
         }
 
         keyStates[key] = true; // Only set key state if not in level selection
