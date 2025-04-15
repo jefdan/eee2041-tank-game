@@ -10,10 +10,12 @@
 #include <iostream>
 #include <math.h>
 #include <string>
+#include <cstring>
 #include <vector>
 #include <fstream>
 #include <iomanip> // Required for setting precision
 #include <sstream> // Required for converting float to string
+#include <array>  // For std::array
 
 // Function declarations.
 bool initGL(int argc, char** argv);
@@ -28,6 +30,7 @@ void mouse(int button, int state, int x, int y);
 void motion(int x, int y);
 void Timer(int value);
 void initTexture(std::string filename, GLuint & textureID);
+bool initCubemapTexture(const std::vector<std::string>& faces, GLuint& textureID); // Added prototype
 void drawMaze();
 void drawTank();
 void drawBall();
@@ -107,6 +110,7 @@ bool cockpitView = false; // Add state for cockpit view
 GLuint shaderProgramID;
 GLuint shinyShaderProgramID;
 GLuint tankShaderProgramID;
+GLuint skyboxShaderProgramID; // Added for skybox
 
 // Viewing/Camera.
 Matrix4x4 ModelViewMatrix;		// ModelView Matrix
@@ -114,6 +118,11 @@ GLuint MVMatrixUniformLocation;		// ModelView Matrix Uniform
 Matrix4x4 ProjectionMatrix;		// Projection Matrix
 GLuint ProjectionUniformLocation;	// Projection Matrix Uniform Location
 SphericalCameraManipulator cameraManip;
+
+// Skybox Shader Uniforms
+GLuint skyboxMVMatrixUniformLocation;
+GLuint skyboxProjectionUniformLocation;
+GLuint skyboxCubemapUniformLocation;
 
 // Meshes.
 Mesh tank_chassis;
@@ -139,7 +148,7 @@ GLuint hamvee_texture; // Add this line
 GLuint box_texture;    // Add this line
 GLuint coin_texture;   // Add this line
 GLuint ball_texture;   // Add this line
-GLuint skybox_texture; // Add this line
+GLuint skybox_texture; // Represents the cubemap texture ID now
 
 GLuint vertexNormalAttribute;	
 
@@ -205,7 +214,19 @@ int main(int argc, char** argv)
 	initTexture("../models/ball.bmp", ball_texture);
 
 	skybox.loadOBJ("../models/cube.obj");
-	initTexture("../models/skybox/left.bmp", skybox_texture);
+	// Define the faces for the cubemap in the correct order
+    std::vector<std::string> skyboxFaces = {
+        "../models/skybox/left.bmp",   // Negative X
+        "../models/skybox/right.bmp",  // Positive X
+        "../models/skybox/top.bmp",    // Positive Y
+        "../models/skybox/bottom.bmp", // Negative Y
+        "../models/skybox/back.bmp",   // Positive Z
+        "../models/skybox/front.bmp"   // Negative Z
+    };
+	if (!initCubemapTexture(skyboxFaces, skybox_texture)) {
+        std::cerr << "Failed to load skybox textures." << std::endl;
+        // Handle error appropriately, maybe exit
+    }
 
 	//Init Camera Manipultor
 	cameraManip.setPanTiltRadius(0.f,0.f,2.f);
@@ -281,7 +302,10 @@ void initShader()
     shaderProgramID = Shader::LoadFromFile("shinyShader.vert","shinyShader.frag");
 
 	shinyShaderProgramID = Shader::LoadFromFile("shinyShader.vert","shinyShader.frag");
-    
+
+    // Load skybox shaders
+    skyboxShaderProgramID = Shader::LoadFromFile("skybox.vert", "skybox.frag");
+
     // Get a handle for our vertex position buffer
 	vertexPositionAttribute = glGetAttribLocation(shaderProgramID, "aVertexPosition");
 	vertexNormalAttribute = glGetAttribLocation(shaderProgramID,    "aVertexNormal");
@@ -303,6 +327,11 @@ void initShader()
 	AmbientUniformLocation          = glGetUniformLocation(shaderProgramID, "Ambient_uniform"); 
 	SpecularUniformLocation         = glGetUniformLocation(shaderProgramID, "Specular_uniform"); 
 	SpecularPowerUniformLocation    = glGetUniformLocation(shaderProgramID, "SpecularPower_uniform");
+
+    // Get uniform locations for skybox shader
+    skyboxMVMatrixUniformLocation = glGetUniformLocation(skyboxShaderProgramID, "MVMatrix_uniform");
+    skyboxProjectionUniformLocation = glGetUniformLocation(skyboxShaderProgramID, "ProjMatrix_uniform");
+    skyboxCubemapUniformLocation = glGetUniformLocation(skyboxShaderProgramID, "skybox"); // Sampler uniform
 }
 
 void initTexture(std::string filename, GLuint & textureID)
@@ -324,6 +353,69 @@ void initTexture(std::string filename, GLuint & textureID)
 	delete[] data;
 }
 
+// Function to initialize a cubemap texture
+bool initCubemapTexture(const std::vector<std::string>& faces, GLuint& textureID)
+{
+    glGenTextures(1, &textureID);
+    glBindTexture(GL_TEXTURE_CUBE_MAP, textureID);
+
+    int width, height;
+    char* data = nullptr;
+    char* flipped_data = nullptr; // Buffer for flipped data
+
+    // Load the 6 faces
+    for (unsigned int i = 0; i < faces.size(); i++)
+    {
+        if (!Texture::LoadBMP(faces[i], width, height, data)) {
+             std::cerr << "Failed to load texture: " << faces[i] << std::endl;
+             glBindTexture(GL_TEXTURE_CUBE_MAP, 0); // Unbind
+             glDeleteTextures(1, &textureID); // Delete texture object
+             textureID = 0; // Reset texture ID
+             return false;
+        }
+
+        // Flip the image data vertically
+        int row_pitch = width * 3; // Assuming 3 bytes per pixel (RGB)
+        int image_size = row_pitch * height;
+        flipped_data = new char[image_size];
+        if (!flipped_data) {
+            std::cerr << "Failed to allocate memory for flipping texture: " << faces[i] << std::endl;
+            delete[] data;
+            glBindTexture(GL_TEXTURE_CUBE_MAP, 0);
+            glDeleteTextures(1, &textureID);
+            textureID = 0;
+            return false;
+        }
+
+        for (int y = 0; y < height; ++y) {
+            memcpy(flipped_data + y * row_pitch,            // Destination: Start of row y in flipped buffer
+                   data + (height - 1 - y) * row_pitch, // Source: Start of row (height-1-y) in original buffer
+                   row_pitch);                          // Bytes to copy: One full row
+        }
+
+        // Note the target parameter for cubemap faces
+        glTexImage2D(GL_TEXTURE_CUBE_MAP_POSITIVE_X + i,
+                     0, GL_RGB, width, height, 0, GL_RGB, GL_UNSIGNED_BYTE, flipped_data); // Use flipped data
+
+        delete[] data; // Cleanup original data
+        delete[] flipped_data; // Cleanup flipped data buffer
+        data = nullptr;
+        flipped_data = nullptr;
+    }
+
+    // Set texture parameters for cubemap
+    glTexParameteri(GL_TEXTURE_CUBE_MAP, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+    glTexParameteri(GL_TEXTURE_CUBE_MAP, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
+    glTexParameteri(GL_TEXTURE_CUBE_MAP, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
+    glTexParameteri(GL_TEXTURE_CUBE_MAP, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
+    glTexParameteri(GL_TEXTURE_CUBE_MAP, GL_TEXTURE_WRAP_R, GL_CLAMP_TO_EDGE); // WRAP_R for the 3rd dimension
+
+    glBindTexture(GL_TEXTURE_CUBE_MAP, 0); // Unbind texture
+
+    std::cout << "Cubemap texture loaded successfully." << std::endl;
+    return true;
+}
+
 //! Display Loop
 void display(void)
 {
@@ -339,12 +431,28 @@ void display(void)
 	// Clear the screen
 	glClear( GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT );
 
-    //Draw your scene
+    // --- Draw Skybox First ---
+    glDepthMask(GL_FALSE); // Disable depth writing
+    glDepthFunc(GL_LEQUAL); // Change depth function for skybox drawing
+    glCullFace(GL_FRONT);   // Cull front faces for skybox
+    glUseProgram(skyboxShaderProgramID);
 
+    // Projection Matrix - Perspective Projection (same as main view)
+    ProjectionMatrix.perspective(90, 1.0, 0.0001, 10000.0);
+    glUniformMatrix4fv(skyboxProjectionUniformLocation, 1, false, ProjectionMatrix.getPtr());
+
+    drawSkybox(); // Draw the skybox using its specific shader and uniforms
+
+    // Restore defaults
+    glCullFace(GL_BACK);    // Restore back face culling
+    glDepthMask(GL_TRUE); // Re-enable depth writing
+    // --- End Skybox Draw ---
+
+    // --- Draw Rest of the Scene ---
 	glUseProgram(shaderProgramID);
 
 	//Set Colour after program is in use
-	glActiveTexture(GL_TEXTURE0);
+	glActiveTexture(GL_TEXTURE0); // Ensure texture unit 0 is active for main scene
 
 	//Projection Matrix - Perspective Projection
     ProjectionMatrix.perspective(90, 1.0, 0.0001, 10000.0);
@@ -359,7 +467,6 @@ void display(void)
 	drawMaze();
 	drawTank();
 	drawBall();
-	drawSkybox();
 
 	glUseProgram(0);
 
@@ -729,32 +836,35 @@ void drawBall() {
 }
 
 void drawSkybox() {
-	ModelViewMatrix.toIdentity();
-	Matrix4x4 m = cameraManip.apply(ModelViewMatrix);
-	m.translate(0, 0, 0);
-	m.scale(256, 256, 256);
+    // Use the skybox shader program (already set in display)
+    // glUseProgram(skyboxShaderProgramID); // Set in display loop before calling
 
-	glUniformMatrix4fv(
-		MVMatrixUniformLocation,
-		1,
-		false,
-		m.getPtr());
+    // Get the view matrix from the camera manipulator by applying it to an identity matrix
+    Matrix4x4 viewMatrix; // Starts as identity
+    viewMatrix = cameraManip.apply(viewMatrix);
 
-	glUniform3f(LightDirectionUniformLocation, lightDirection.x, lightDirection.y, lightDirection.z);
-	glUniform3f(ColourUniformLocation, 1.0f, 1.0f, 1.0f); // White color for skybox texture
-	glUniform3f(LightColorUniformLocation, lightColor.x, lightColor.y, lightColor.z);
-	glUniform4f(AmbientUniformLocation, 0.8f, 0.8f, 0.8f, 1.0); // Higher ambient for skybox?
-	glUniform4f(SpecularUniformLocation, 0.0f, 0.0f, 0.0f, 1.0); // No specular for skybox
-	glUniform1f(SpecularPowerUniformLocation, 0.0f);
+    // Remove the translation part of the view matrix using the new method
+    viewMatrix.removeTranslation();
 
-	glActiveTexture(GL_TEXTURE0);
-	glBindTexture(GL_TEXTURE_2D, skybox_texture);
-	glUniform1i(textureMapUniformLocation, 0);
+    // The ModelView matrix for the skybox is just the modified view matrix
+    // (no model transformation needed as it's centered on the camera)
+    glUniformMatrix4fv(skyboxMVMatrixUniformLocation, 1, false, viewMatrix.getPtr());
+    // Projection matrix is set in the display loop
 
-	skybox.Draw(
-		vertexPositionAttribute,
-		vertexNormalAttribute, textureCoordinateAttribute
-	);
+    // Bind the cubemap texture
+    glActiveTexture(GL_TEXTURE0); // Use texture unit 0
+    glBindTexture(GL_TEXTURE_CUBE_MAP, skybox_texture);
+    glUniform1i(skyboxCubemapUniformLocation, 0); // Tell shader to use texture unit 0
+
+    // Draw the skybox cube mesh
+    // Skybox shader only needs vertex positions
+    skybox.Draw(
+        glGetAttribLocation(skyboxShaderProgramID, "aVertexPosition"), // Use position attribute from skybox shader
+        -1, // No normal needed for basic skybox
+        -1  // No texcoord needed (using vertex position)
+    );
+
+    glBindTexture(GL_TEXTURE_CUBE_MAP, 0); // Unbind cubemap
 }
 
 // Function to fire the ball

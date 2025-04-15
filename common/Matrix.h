@@ -75,6 +75,9 @@ public:
 	//! LookAt function
 	void lookAt(Vector3f eye, Vector3f center, Vector3f up);	
 
+    //! Remove Translation Component
+    void removeTranslation();
+
 private:
 
 	//! 2D Array containing values: accessed val[COLUMN][ROW]

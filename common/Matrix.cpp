@@ -257,6 +257,13 @@ void Matrix4x4::lookAt(Vector3f eye, Vector3f center, Vector3f up)
 	this->val[3][3] = 1.0;	
 }
 
+//! Remove Translation Component
+void Matrix4x4::removeTranslation()
+{
+    this->val[3][0] = 0.0f;
+    this->val[3][1] = 0.0f;
+    this->val[3][2] = 0.0f;
+}
     
 //!
 Matrix4x4 Matrix4x4::transpose()
