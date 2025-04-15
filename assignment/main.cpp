@@ -102,6 +102,7 @@ bool canFire = true; // Add a boolean to control firing rate
 bool win = false;
 bool help = false;
 int initialCoins = 0;
+bool cockpitView = false; // Add state for cockpit view
 
 GLuint shaderProgramID;
 GLuint shinyShaderProgramID;
@@ -400,6 +401,7 @@ void display(void)
 		render2dText("[j] rotate turret left", 1.0, 1.0, 1.0, -0.9, -0.2);
 		render2dText("[k] fire turret", 1.0, 1.0, 1.0, -0.9, -0.3);
 		render2dText("[l] rotate turret right", 1.0, 1.0, 1.0, -0.9, -0.4);
+		render2dText("[c] toggle cockpit view", 1.0, 1.0, 1.0, -0.9, -0.5);
 	}
 
     // Display level selection menu if active
@@ -800,6 +802,7 @@ void keyboard(unsigned char key, int x, int y)
             ballVelocities.clear();
             ballActives.clear();
             canFire = true; // Reset firing state
+            cockpitView = false; // Reset view on level change
 
             loadLevel(("../levels/" + levelName).c_str());
             showLevelSelection = false; // Hide selection screen after loading
@@ -824,6 +827,7 @@ void keyboard(unsigned char key, int x, int y)
             ballVelocities.clear();
             ballActives.clear();
             canFire = true; // Reset firing state
+            cockpitView = false; // Reset view on restart
 
             // Reload the current level
             loadLevel(("../levels/" + levelName).c_str());
@@ -836,6 +840,12 @@ void keyboard(unsigned char key, int x, int y)
         if(key == 'e') {
             showLevelSelection = true; // Show level selection screen
             help = false; // Hide help when showing levels
+        }
+
+        // Toggle cockpit view
+        if (key == 'c' && !gameOver && !win) {
+            cockpitView = !cockpitView;
+            updateCamera(); // Update camera immediately after toggle
         }
 
         // Jump mechanic: Spacebar (ASCII 32)
@@ -969,9 +979,34 @@ return retCode;
 
 void updateCamera() // Update the camera to focus on the tank.
 {
-    Vector3f tankWorldPos = Vector3f(tankPosition.x, 0.75, tankPosition.z);
-    cameraManip.setFocus(tankWorldPos);
-	cameraManip.setPanTiltRadius(turretRotation/(180/M_PI), -1.0f, 5.0f);
+    Vector3f tankWorldPos;
+
+    if (cockpitView) {
+        // Raise the base position slightly higher for cockpit view
+        tankWorldPos = Vector3f(tankPosition.x, tankPosition.y + 1.0f, tankPosition.z); // Increased Y offset for cockpit
+
+        // Cockpit view: Position camera slightly in front of the tank, looking forward based on turret rotation
+        float turretRadians = -turretRotation * (M_PI / 180.0f);
+        Vector3f lookDirection = Vector3f(-sin(turretRadians), 0.0f, cos(turretRadians));
+
+        // Set the focus point slightly ahead of the tank's current position along the turret direction
+        // This becomes the center point around which the spherical camera operates.
+        Vector3f focusPoint = tankWorldPos + lookDirection * 1.3f; // Focus slightly in front
+
+        // Set the manipulator's focus
+        cameraManip.setFocus(focusPoint);
+
+        // Set pan to match turret rotation, tilt slightly down, and radius very small
+        // The small radius places the camera *at* the focus point we just set.
+        // Adjust tilt slightly if needed for better view.
+        cameraManip.setPanTiltRadius(turretRotation / (180 / M_PI), -1.5f, 0.1f); // Pan = turret, Tilt slightly down, Radius minimal
+
+    } else {
+        // Normal third-person view uses the standard offset
+        tankWorldPos = Vector3f(tankPosition.x, tankPosition.y + 0.5f, tankPosition.z); // Standard Y offset
+        cameraManip.setFocus(tankWorldPos);
+	    cameraManip.setPanTiltRadius(turretRotation/(180/M_PI), -1.0f, 4.0f); // Adjusted radius and tilt for better view
+    }
 }
 
 void fireBallTimer(int value)
