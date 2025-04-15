@@ -42,8 +42,13 @@ void render2dText(std::string text, float r, float g, float b, float x, float y)
 // Global variables.
 float game_time = 0.0f; // In game timer.
 int score = 0;
-std::string levelName = "holy-grail.level";
+std::string levelName = "holy-grail.level"; // Default level
 std::string reloadBar;
+
+// Level Selection
+std::vector<std::string> levelFiles;
+std::vector<std::string> levelDisplayNames;
+bool showLevelSelection = false;
 
 int screenWidth   	        = 720;
 int screenHeight   	        = 720;
@@ -175,7 +180,11 @@ int main(int argc, char** argv)
     for(int i = 0 ; i < 256; i++)
         keyStates[i] = false;
 
-    // Load the level
+    // Initialize level list
+    levelFiles = {"beautiful-paradise.level", "divine-intervention.level", "holy-grail.level", "home-sweet-home.level", "parallels.level"};
+    levelDisplayNames = {"Beautiful Paradise", "Divine Intervention", "Holy Grail", "Home Sweet Home", "Parallels"};
+
+    // Load the default level
     loadLevel(("../levels/" + levelName).c_str());
     
     // Setting up my programme.
@@ -317,7 +326,7 @@ void initTexture(std::string filename, GLuint & textureID)
 //! Display Loop
 void display(void)
 {
-	if (!win && !tankFalling)
+	if (!win && !tankFalling && !showLevelSelection) // Pause timer during level select
 		game_time+= 1.0f; // Increment the in-game timer
 
     handleKeys();
@@ -359,8 +368,8 @@ void display(void)
 	stream << std::fixed << std::setprecision(2) << timeInSeconds;
 	std::string roundedTime = stream.str();
 
-	render2dText("Time: " + roundedTime, 1.0, 1.0, 1.0, -0.9, 0.9);
-	render2dText("Score: " + std::to_string(score) + "/" + std::to_string(initialCoins), 1.0, 1.0, 1.0, -0.9, 0.8);
+	render2dText("Time: " + roundedTime, 1.0, 1.0, 0.0, -0.9, 0.9);
+	render2dText("Score: " + std::to_string(score) + "/" + std::to_string(initialCoins), 1.0, 1.0, 0.0, -0.9, 0.8);
 	render2dText("l[e]vels", 1.0, 1.0, 1.0, -0.9, 0.7);
 	render2dText("[h]elp", 1.0, 1.0, 1.0, -0.9, 0.6);
 
@@ -391,6 +400,17 @@ void display(void)
 		render2dText("[k] fire turret", 1.0, 1.0, 1.0, -0.9, -0.2);
 		render2dText("[l] rotate turret right", 1.0, 1.0, 1.0, -0.9, -0.3);
 	}
+
+    // Display level selection menu if active
+    if (showLevelSelection) {
+        render2dText("Select Level:", 1.0, 1.0, 0.0, -0.2, 0.5);
+        float yPos = 0.4f;
+        for (size_t i = 0; i < levelDisplayNames.size(); ++i) {
+            render2dText("[" + std::to_string(i) + "] " + levelDisplayNames[i], 1.0, 1.0, 1.0, -0.2, yPos);
+            yPos -= 0.1f; // Adjust spacing as needed
+        }
+        render2dText("Press 'e' again to cancel", 1.0, 1.0, 0.0, -0.2, yPos - 0.1f);
+    }
 
 	//Swap Buffers and post redisplay
 	glutSwapBuffers();
@@ -738,29 +758,73 @@ void keyboard(unsigned char key, int x, int y)
 		exit(0);
 	}
 
-	if ((gameOver || win) && key == 'r') {
-		// Reset game state
-		gameOver = false;
-		tankFalling = false;
-		tankPosition = Vector3f(0.0f, 0.0f, 0.0f);
-		tankRotation = 0.0f;
-		turretRotation = 0.0f;
-		tankYVelocity = 0.0f;
-		score = 0;
-		game_time = 0.0f;
-		win = false;
+    if (showLevelSelection) {
+        if (key == 'e') {
+            showLevelSelection = false; // Cancel level selection
+        } else if (key >= '0' && key < ('0' + levelFiles.size())) {
+            int levelIndex = key - '0';
+            levelName = levelFiles[levelIndex]; // Update the current level name
 
-		// Reload the level
-		loadLevel(("../levels/" + levelName).c_str());
-	}
+            // Reset game state before loading new level
+            gameOver = false;
+            tankFalling = false;
+            tankPosition = Vector3f(0.0f, 0.0f, 0.0f); // Will be set by loadLevel spawn point
+            tankRotation = 0.0f;
+            turretRotation = 0.0f;
+            tankYVelocity = 0.0f;
+            tankVelocity = 0.0f; // Reset velocity
+            tankRotationVelocity = 0.0f;
+            turretVelocity = 0.0f;
+            score = 0;
+            game_time = 0.0f;
+            win = false;
+            help = false; // Close help if open
+            ballPositions.clear(); // Clear existing balls
+            ballVelocities.clear();
+            ballActives.clear();
+            canFire = true; // Reset firing state
 
-	if(key == 'h') {
-		help = !help;
-	}
+            loadLevel(("../levels/" + levelName).c_str());
+            showLevelSelection = false; // Hide selection screen after loading
+        }
+    } else {
+        if ((gameOver || win) && key == 'r') {
+            // Reset game state
+            gameOver = false;
+            tankFalling = false;
+            tankPosition = Vector3f(0.0f, 0.0f, 0.0f); // Will be set by loadLevel spawn point
+            tankRotation = 0.0f;
+            turretRotation = 0.0f;
+            tankYVelocity = 0.0f;
+            tankVelocity = 0.0f; // Reset velocity
+            tankRotationVelocity = 0.0f;
+            turretVelocity = 0.0f;
+            score = 0;
+            game_time = 0.0f;
+            win = false;
+            help = false; // Close help if open
+            ballPositions.clear(); // Clear existing balls
+            ballVelocities.clear();
+            ballActives.clear();
+            canFire = true; // Reset firing state
+
+            // Reload the current level
+            loadLevel(("../levels/" + levelName).c_str());
+        }
+
+        if(key == 'h') {
+            help = !help;
+        }
+
+        if(key == 'e') {
+            showLevelSelection = true; // Show level selection screen
+            help = false; // Hide help when showing levels
+        }
+
+        keyStates[key] = true; // Only set key state if not in level selection
+    }
 
 	glutPostRedisplay();
-
-    keyStates[key] = true;
 }
 
 //! Handle key up situation
@@ -773,8 +837,8 @@ void keyUp(unsigned char key, int x, int y)
 //! Handle Keys
 void handleKeys()
 {
-	if (tankFalling) return; // We don't want the player to move a falling tank.
-	if (win) return;
+	if (tankFalling || win || showLevelSelection || gameOver) return; // Prevent input during these states
+
 	if (fabs(tankVelocity) < 0.001f)
 	{
 		tankVelocity = 0.0f;
@@ -892,6 +956,15 @@ void fireBallTimer(int value)
 }
 
 void loadLevel(const char* filename) {
+    // Extract just the filename part for levelName update
+    std::string fullPath(filename);
+    size_t lastSlash = fullPath.find_last_of("/\\");
+    if (lastSlash != std::string::npos) {
+        levelName = fullPath.substr(lastSlash + 1);
+    } else {
+        levelName = fullPath; // Use the full string if no slash found
+    }
+
     std::ifstream file(filename);
     if (!file.is_open()) {
         std::cerr << "Could not open level file: " << filename << std::endl;
