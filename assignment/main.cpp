@@ -13,9 +13,10 @@
 #include <cstring>
 #include <vector>
 #include <fstream>
-#include <iomanip> // Required for setting precision
-#include <sstream> // Required for converting float to string
-#include <array>  // For std::array
+#include <iomanip>
+#include <sstream>
+#include <array>
+#include <random>
 
 // Function declarations.
 bool initGL(int argc, char** argv);
@@ -30,7 +31,7 @@ void mouse(int button, int state, int x, int y);
 void motion(int x, int y);
 void Timer(int value);
 void initTexture(std::string filename, GLuint & textureID);
-bool initCubemapTexture(const std::vector<std::string>& faces, GLuint& textureID); // Added prototype
+bool initCubemapTexture(const std::vector<std::string>& faces, GLuint& textureID);
 void drawMaze();
 void drawTank();
 void drawBall();
@@ -40,15 +41,16 @@ void updateCamera();
 int printOglError(char *file, int line);
 void fireBallTimer(int value);
 void loadLevel(const char* filename);
+void generateRandomLevel();
 void render2dText(std::string text, float r, float g, float b, float x, float y);
 
 // Global variables.
 float game_time = 0.0f; // In game timer.
 int score = 0;
-std::string levelName = "holy-grail.level"; // Default level
+std::string levelName = "holy-grail.level"; // Holy grail is the default level.
 std::string reloadBar;
 
-// Level Selection
+// Level Selection.
 std::vector<std::string> levelFiles;
 std::vector<std::string> levelDisplayNames;
 bool showLevelSelection = false;
@@ -60,10 +62,11 @@ float mazeX = 0.0;
 float mazeZ = 0.0;
 int mazeValue = 0;
 bool shouldFall = false;
+int ammo = 15;
 
 bool keyStates[256];
 
-// Tank position tracking
+// Tank position tracking.
 Vector3f tankPosition = Vector3f(0.0f, 0.0f, 0.0f);
 float tankRotation = 0.0f;
 float turretRotation = 0.0f;
@@ -89,28 +92,26 @@ float turretDeceleration = 0.2f;
 float turretMaxVelocity = 5.0f;
 float turretVelocityDecay = 0.91f;
 
-// Ball properties
+// Ball properties.
 std::vector<Vector3f> ballPositions;
 std::vector<Vector3f> ballVelocities;
 std::vector<bool> ballActives;
 float ballSpeed = 0.5f;
 Vector3f gravity = Vector3f(0.0f, -0.01f, 0.0f);
-float tankYVelocity = 0.0f; // Tank's vertical velocity
-float tankGravity = -0.001f; // Gravity affecting the tank
-float gameOverThreshold = -5.0f; // Y position below which game is over
+float tankYVelocity = 0.0f;
+float tankGravity = -0.001f;
+float gameOverThreshold = -5.0f; // If the tank falls below this, the game is over.
 bool gameOver = false;
 bool tankFalling = false;
 
-bool canFire = true; // Add a boolean to control firing rate
+bool canFire = true;
 bool win = false;
 bool help = false;
 int initialCoins = 0;
-bool cockpitView = false; // Add state for cockpit view
+bool cockpitView = false;
 
 GLuint shaderProgramID;
-GLuint shinyShaderProgramID;
-GLuint tankShaderProgramID;
-GLuint skyboxShaderProgramID; // Added for skybox
+GLuint skyboxShaderProgramID;
 
 // Viewing/Camera.
 Matrix4x4 ModelViewMatrix;		// ModelView Matrix
@@ -139,38 +140,27 @@ GLuint textureCoordinateAttribute; // Vertex Texcoord Attribute Location
 GLuint textureMapUniformLocation; // Texture Map Location
 GLuint vertexPositionAttribute;		// Vertex Position Attribute Location
 
-GLuint shinyTextureCoordinateAttribute; // Vertex Texcoord Attribute Location
-GLuint shinyTextureMapUniformLocation; // Texture Map Location
-GLuint shinyVertexPositionAttribute;		// Vertex Position Attribute Location
-
 // OpenGL textures.
-GLuint hamvee_texture; // Add this line
-GLuint box_texture;    // Add this line
-GLuint coin_texture;   // Add this line
-GLuint ball_texture;   // Add this line
-GLuint skybox_texture; // Represents the cubemap texture ID now
+GLuint hamvee_texture;
+GLuint box_texture;
+GLuint coin_texture;
+GLuint ball_texture;
+GLuint skybox_texture;
 
 GLuint vertexNormalAttribute;	
 
-GLuint shinyVertexNormalAttribute;	
-
-GLuint LightDirectionUniformLocation; // Renamed
-GLuint ColourUniformLocation;         // Added
-GLuint LightColorUniformLocation;     // Added
+GLuint LightDirectionUniformLocation;
+GLuint ColourUniformLocation;
+GLuint LightColorUniformLocation;
 GLuint AmbientUniformLocation;
 GLuint SpecularUniformLocation;
 GLuint SpecularPowerUniformLocation;
 
-GLuint ShinyLightPositionUniformLocation;
-GLuint ShinyAmbientUniformLocation;
-GLuint ShinySpecularUniformLocation;
-GLuint ShinySpecularPowerUniformLocation;
-
-Vector3f lightDirection = Vector3f(1.0,1.0,1.0); // Example direction
-Vector3f objectColor    = Vector3f(1.0, 1.0, 1.0);  // Default white color
-Vector3f lightColor     = Vector3f(0.7, 0.7, 0.6);  // Default white light
+Vector3f lightDirection = Vector3f(1.0,1.0,1.0);
+Vector3f objectColor    = Vector3f(1.0, 1.0, 1.0);
+Vector3f lightColor     = Vector3f(0.7, 0.7, 0.6);
 Vector3f ambient    = Vector3f(0.5,0.5,0.5);
-Vector3f specular   = Vector3f(1.0,1.0,1.0); // Changed from green to white
+Vector3f specular   = Vector3f(1.0,1.0,1.0);
 float specularPower = 10.0;
 
 int** maze;
@@ -187,17 +177,15 @@ int main(int argc, char** argv)
 	initShader();
 
 	//Init Key States to false;
-    for(int i = 0 ; i < 256; i++)
-        keyStates[i] = false;
+    for (int i = 0 ; i < 256; i++) keyStates[i] = false;
 
-    // Initialize level list
-    levelFiles = {"beautiful-paradise.level", "divine-intervention.level", "holy-grail.level", "home-sweet-home.level", "parallels.level"};
-    levelDisplayNames = {"Beautiful Paradise", "Divine Intervention", "Holy Grail", "Home Sweet Home", "Parallels"};
+	// Construct the level list.
+    levelFiles = {"holy-grail.level", "divine-intervention.level", "home-sweet-home.level", "beautiful-paradise.level", "parallels.level", "random.level"};
+    levelDisplayNames = {"[BEGINNER] Holy Grail",  "[EASY] Divine Intervention", "[MEDIUM] Home Sweet Home", "[HARD] Beautiful Paradise", "[EXTREME] Parallels", "[RANDOM] Random"};
 
-    // Load the default level
     loadLevel(("../levels/" + levelName).c_str());
     
-    // Setting up my programme.
+    // Set up other things like textures and models.
 	tank_chassis.loadOBJ("../models/chassis.obj");
 	tank_front_wheel.loadOBJ("../models/front_wheel.obj");
 	tank_back_wheel.loadOBJ("../models/back_wheel.obj");
@@ -214,18 +202,16 @@ int main(int argc, char** argv)
 	initTexture("../models/ball.bmp", ball_texture);
 
 	skybox.loadOBJ("../models/cube.obj");
-	// Define the faces for the cubemap in the correct order
     std::vector<std::string> skyboxFaces = {
-        "../models/skybox/left.bmp",   // Negative X
-        "../models/skybox/right.bmp",  // Positive X
-        "../models/skybox/top.bmp",    // Positive Y
-        "../models/skybox/bottom.bmp", // Negative Y
-        "../models/skybox/back.bmp",   // Positive Z
-        "../models/skybox/front.bmp"   // Negative Z
+        "../models/skybox/left.bmp", // -x
+        "../models/skybox/right.bmp", // +x
+        "../models/skybox/top.bmp", // +y
+        "../models/skybox/bottom.bmp", // -y
+        "../models/skybox/back.bmp", // +z
+        "../models/skybox/front.bmp" // -z
     };
 	if (!initCubemapTexture(skyboxFaces, skybox_texture)) {
         std::cerr << "Failed to load skybox textures." << std::endl;
-        // Handle error appropriately, maybe exit
     }
 
 	//Init Camera Manipultor
@@ -240,7 +226,7 @@ int main(int argc, char** argv)
     //Delete shader program
 	glDeleteProgram(shaderProgramID);
 
-    // Deallocate memory for the maze
+    // Deallocate memory for the maze.
     for (int i = 0; i < mazeHeight; ++i) {
         delete[] maze[i];
     }
@@ -301,34 +287,23 @@ void initShader()
 	//Create shader
     shaderProgramID = Shader::LoadFromFile("shinyShader.vert","shinyShader.frag");
 
-	shinyShaderProgramID = Shader::LoadFromFile("shinyShader.vert","shinyShader.frag");
-
-    // Load skybox shaders
+	// Shaders for skybox.
     skyboxShaderProgramID = Shader::LoadFromFile("skybox.vert", "skybox.frag");
 
-    // Get a handle for our vertex position buffer
 	vertexPositionAttribute = glGetAttribLocation(shaderProgramID, "aVertexPosition");
 	vertexNormalAttribute = glGetAttribLocation(shaderProgramID,    "aVertexNormal");
 	textureCoordinateAttribute = glGetAttribLocation(shaderProgramID, "aVertexTexcoord");
 	textureMapUniformLocation = glGetUniformLocation(shaderProgramID, "TextureMap_uniform");
-
-	// Get a handle for our vertex position buffer (shiny)
-	shinyVertexPositionAttribute = glGetAttribLocation(shinyShaderProgramID, "aVertexPosition");
-	shinyVertexNormalAttribute = glGetAttribLocation(shinyShaderProgramID,    "aVertexNormal");
-	shinyTextureCoordinateAttribute = glGetAttribLocation(shinyShaderProgramID, "aVertexTexcoord");
-	shinyTextureMapUniformLocation = glGetUniformLocation(shinyShaderProgramID, "TextureMap_uniform");
 	
-	// Get ModelView Matrix uniform location
 	MVMatrixUniformLocation = glGetUniformLocation(shaderProgramID, "MVMatrix_uniform"); 
 	ProjectionUniformLocation = glGetUniformLocation(shaderProgramID, "ProjMatrix_uniform"); 
-	LightDirectionUniformLocation   = glGetUniformLocation(shaderProgramID, "LightDirection_uniform"); // Renamed
-	ColourUniformLocation           = glGetUniformLocation(shaderProgramID, "Colour_uniform");         // Added
-	LightColorUniformLocation       = glGetUniformLocation(shaderProgramID, "LightColor_uniform");     // Added
+	LightDirectionUniformLocation   = glGetUniformLocation(shaderProgramID, "LightDirection_uniform");
+	ColourUniformLocation           = glGetUniformLocation(shaderProgramID, "Colour_uniform");
+	LightColorUniformLocation       = glGetUniformLocation(shaderProgramID, "LightColor_uniform");
 	AmbientUniformLocation          = glGetUniformLocation(shaderProgramID, "Ambient_uniform"); 
 	SpecularUniformLocation         = glGetUniformLocation(shaderProgramID, "Specular_uniform"); 
 	SpecularPowerUniformLocation    = glGetUniformLocation(shaderProgramID, "SpecularPower_uniform");
 
-    // Get uniform locations for skybox shader
     skyboxMVMatrixUniformLocation = glGetUniformLocation(skyboxShaderProgramID, "MVMatrix_uniform");
     skyboxProjectionUniformLocation = glGetUniformLocation(skyboxShaderProgramID, "ProjMatrix_uniform");
     skyboxCubemapUniformLocation = glGetUniformLocation(skyboxShaderProgramID, "skybox"); // Sampler uniform
@@ -353,7 +328,6 @@ void initTexture(std::string filename, GLuint & textureID)
 	delete[] data;
 }
 
-// Function to initialize a cubemap texture
 bool initCubemapTexture(const std::vector<std::string>& faces, GLuint& textureID)
 {
     glGenTextures(1, &textureID);
@@ -361,21 +335,21 @@ bool initCubemapTexture(const std::vector<std::string>& faces, GLuint& textureID
 
     int width, height;
     char* data = nullptr;
-    char* flipped_data = nullptr; // Buffer for flipped data
+    char* flipped_data = nullptr;
 
-    // Load the 6 faces
+    // Load faces.
     for (unsigned int i = 0; i < faces.size(); i++)
     {
         if (!Texture::LoadBMP(faces[i], width, height, data)) {
              std::cerr << "Failed to load texture: " << faces[i] << std::endl;
-             glBindTexture(GL_TEXTURE_CUBE_MAP, 0); // Unbind
-             glDeleteTextures(1, &textureID); // Delete texture object
-             textureID = 0; // Reset texture ID
+             glBindTexture(GL_TEXTURE_CUBE_MAP, 0);
+             glDeleteTextures(1, &textureID);
+             textureID = 0;
              return false;
         }
 
-        // Flip the image data vertically
-        int row_pitch = width * 3; // Assuming 3 bytes per pixel (RGB)
+        // Flip the image data vertically.
+        int row_pitch = width * 3;
         int image_size = row_pitch * height;
         flipped_data = new char[image_size];
         if (!flipped_data) {
@@ -388,29 +362,27 @@ bool initCubemapTexture(const std::vector<std::string>& faces, GLuint& textureID
         }
 
         for (int y = 0; y < height; ++y) {
-            memcpy(flipped_data + y * row_pitch,            // Destination: Start of row y in flipped buffer
-                   data + (height - 1 - y) * row_pitch, // Source: Start of row (height-1-y) in original buffer
-                   row_pitch);                          // Bytes to copy: One full row
+            memcpy(flipped_data + y * row_pitch,
+                   data + (height - 1 - y) * row_pitch,
+                   row_pitch);
         }
 
-        // Note the target parameter for cubemap faces
         glTexImage2D(GL_TEXTURE_CUBE_MAP_POSITIVE_X + i,
-                     0, GL_RGB, width, height, 0, GL_RGB, GL_UNSIGNED_BYTE, flipped_data); // Use flipped data
+                     0, GL_RGB, width, height, 0, GL_RGB, GL_UNSIGNED_BYTE, flipped_data);
 
-        delete[] data; // Cleanup original data
-        delete[] flipped_data; // Cleanup flipped data buffer
+        delete[] data;
+        delete[] flipped_data;
         data = nullptr;
         flipped_data = nullptr;
     }
 
-    // Set texture parameters for cubemap
     glTexParameteri(GL_TEXTURE_CUBE_MAP, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
     glTexParameteri(GL_TEXTURE_CUBE_MAP, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
     glTexParameteri(GL_TEXTURE_CUBE_MAP, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
     glTexParameteri(GL_TEXTURE_CUBE_MAP, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
-    glTexParameteri(GL_TEXTURE_CUBE_MAP, GL_TEXTURE_WRAP_R, GL_CLAMP_TO_EDGE); // WRAP_R for the 3rd dimension
+    glTexParameteri(GL_TEXTURE_CUBE_MAP, GL_TEXTURE_WRAP_R, GL_CLAMP_TO_EDGE);
 
-    glBindTexture(GL_TEXTURE_CUBE_MAP, 0); // Unbind texture
+    glBindTexture(GL_TEXTURE_CUBE_MAP, 0);
 
     std::cout << "Cubemap texture loaded successfully." << std::endl;
     return true;
@@ -419,45 +391,35 @@ bool initCubemapTexture(const std::vector<std::string>& faces, GLuint& textureID
 //! Display Loop
 void display(void)
 {
-	if (!win && !tankFalling && !showLevelSelection) // Pause timer during level select
-		game_time+= 1.0f; // Increment the in-game timer
+	if (!win && !tankFalling && !showLevelSelection) game_time+= 1.0f;
 
     handleKeys();
+    updateCamera();
 
-    updateCamera(); // Update camera to look at tank.
-
-	glViewport(0,0,screenWidth, screenHeight); // Set viewport size.
+	glViewport(0,0,screenWidth, screenHeight);
 	
 	// Clear the screen
 	glClear( GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT );
 
-    // --- Draw Skybox First ---
-    glDepthMask(GL_FALSE); // Disable depth writing
-    glDepthFunc(GL_LEQUAL); // Change depth function for skybox drawing
-    glCullFace(GL_FRONT);   // Cull front faces for skybox
+    glDepthMask(GL_FALSE);
+    glDepthFunc(GL_LEQUAL);
+    glCullFace(GL_FRONT);
     glUseProgram(skyboxShaderProgramID);
 
-    // Projection Matrix - Perspective Projection (same as main view)
     ProjectionMatrix.perspective(90, 1.0, 0.0001, 10000.0);
     glUniformMatrix4fv(skyboxProjectionUniformLocation, 1, false, ProjectionMatrix.getPtr());
 
-    drawSkybox(); // Draw the skybox using its specific shader and uniforms
+    drawSkybox();
 
-    // Restore defaults
-    glCullFace(GL_BACK);    // Restore back face culling
-    glDepthMask(GL_TRUE); // Re-enable depth writing
-    // --- End Skybox Draw ---
+    glCullFace(GL_BACK);
+    glDepthMask(GL_TRUE);
 
-    // --- Draw Rest of the Scene ---
 	glUseProgram(shaderProgramID);
 
-	//Set Colour after program is in use
-	glActiveTexture(GL_TEXTURE0); // Ensure texture unit 0 is active for main scene
+	glActiveTexture(GL_TEXTURE0);
 
-	//Projection Matrix - Perspective Projection
     ProjectionMatrix.perspective(90, 1.0, 0.0001, 10000.0);
    
-    //Set Projection Matrix
     glUniformMatrix4fv(	
 		ProjectionUniformLocation,
 		1,
@@ -470,7 +432,6 @@ void display(void)
 
 	glUseProgram(0);
 
-	// Round game_time to 2 decimal places
 	float timeInSeconds = game_time / 60.0f;
 	std::stringstream stream;
 	stream << std::fixed << std::setprecision(2) << timeInSeconds;
@@ -478,15 +439,11 @@ void display(void)
 
 	render2dText("Time: " + roundedTime, 1.0, 1.0, 0.0, -0.9, 0.9);
 	render2dText("Score: " + std::to_string(score) + "/" + std::to_string(initialCoins), 1.0, 1.0, 0.0, -0.9, 0.8);
-	render2dText("l[e]vels", 1.0, 1.0, 1.0, -0.9, 0.7);
-	render2dText("[h]elp", 1.0, 1.0, 1.0, -0.9, 0.6);
-
-	// reloadBar = "[=====]";
+	render2dText("Ammo: " + std::to_string(ammo) + "/15", 1.0, 1.0, 1.0, -0.9, 0.7);
+	render2dText("l[e]vels", 1.0, 1.0, 1.0, -0.9, 0.6);
+	render2dText("[h]elp", 1.0, 1.0, 1.0, -0.9, 0.5);
 
 	render2dText(reloadBar.c_str(), 1.0, 1.0, 1.0, 0.0, 0.0);
-
-	// render2dText("Maze Position: (" + std::to_string(mazeX) + ", " + std::to_string(mazeZ) + ")", 1.0, 1.0, 1.0, -0.9, 0.6);
-    // render2dText("Maze Value: " + std::to_string(mazeValue), 1.0, 1.0, 1.0, -0.9, 0.5);
 
 	if (gameOver) {
         render2dText("Game Over!", 1.0, 0.0, 0.0, -0.1, 0.0);
@@ -511,13 +468,12 @@ void display(void)
 		render2dText("[c] toggle cockpit view", 1.0, 1.0, 1.0, -0.9, -0.5);
 	}
 
-    // Display level selection menu if active
     if (showLevelSelection) {
         render2dText("Select Level:", 1.0, 1.0, 0.0, -0.2, 0.5);
         float yPos = 0.4f;
         for (size_t i = 0; i < levelDisplayNames.size(); ++i) {
             render2dText("[" + std::to_string(i) + "] " + levelDisplayNames[i], 1.0, 1.0, 1.0, -0.2, yPos);
-            yPos -= 0.1f; // Adjust spacing as needed
+            yPos -= 0.1f;
         }
         render2dText("Press 'e' again to cancel", 1.0, 1.0, 0.0, -0.2, yPos - 0.1f);
     }
@@ -552,14 +508,13 @@ void drawMaze()
 					false,
 					m.getPtr());
 
-				glUniform3f(LightDirectionUniformLocation, lightDirection.x, lightDirection.y, lightDirection.z); // Use direction
-				glUniform3f(ColourUniformLocation, 1.0f, 1.0f, 1.0f); // Set object color (e.g., white for crate)
-				glUniform3f(LightColorUniformLocation, lightColor.x, lightColor.y, lightColor.z); // Set light color
+				glUniform3f(LightDirectionUniformLocation, lightDirection.x, lightDirection.y, lightDirection.z);
+				glUniform3f(ColourUniformLocation, 1.0f, 1.0f, 1.0f);
+				glUniform3f(LightColorUniformLocation, lightColor.x, lightColor.y, lightColor.z);
 				glUniform4f(AmbientUniformLocation, ambient.x, ambient.y, ambient.z, 1.0);
 				glUniform4f(SpecularUniformLocation, specular.x, specular.y, specular.z, 1.0);
 				glUniform1f(SpecularPowerUniformLocation, specularPower);
 				
-				// Bind hamvee texture before drawing the tank chassis
 				glActiveTexture(GL_TEXTURE0);
 				glBindTexture(GL_TEXTURE_2D, box_texture);
 				glUniform1i(textureMapUniformLocation, 0);
@@ -575,16 +530,17 @@ void drawMaze()
 
 				Matrix4x4 m = cameraManip.apply(ModelViewMatrix);
 				m.translate(i*2, 2 + (sin(game_time/100)/5), j*2);
-				m.rotate(game_time, 0, 1, 0); 
+				m.rotate(game_time, 0, 1, 0);
+				m.scale(0.5, 0.5, 0.5);
 				glUniformMatrix4fv(
 					MVMatrixUniformLocation,
 					1,
 					false,
 					m.getPtr());
 
-				glUniform3f(LightDirectionUniformLocation, lightDirection.x, lightDirection.y, lightDirection.z); // Use direction
-				glUniform3f(ColourUniformLocation, 1.0f, 0.84f, 0.0f); // Set object color (e.g., gold for coin)
-				glUniform3f(LightColorUniformLocation, lightColor.x, lightColor.y, lightColor.z); // Set light color
+				glUniform3f(LightDirectionUniformLocation, lightDirection.x, lightDirection.y, lightDirection.z);
+				glUniform3f(ColourUniformLocation, 1.0f, 0.84f, 0.0f);
+				glUniform3f(LightColorUniformLocation, lightColor.x, lightColor.y, lightColor.z);
 				glUniform4f(AmbientUniformLocation, ambient.x, ambient.y, ambient.z, 1.0);
 				glUniform4f(SpecularUniformLocation, specular.x, specular.y, specular.z, 1.0);
 				glUniform1f(SpecularPowerUniformLocation, specularPower);
@@ -620,7 +576,7 @@ void drawTank()
 		updateCamera();
 	}
 
-	// Maze collision detection for falling
+	// Maze collision detection for falling.
     mazeX = ((tankPosition.x / 2));
     mazeZ = ((tankPosition.z / 2));
 
@@ -634,45 +590,36 @@ void drawTank()
 	if (inBounds) {
 		mazeValue = maze[roundedMazeX][roundedMazeZ];
 	} else {
-		mazeValue = 0; // Default to 0 if out of bounds
+		mazeValue = 0;
 	}
 
-	// Determine if the tank *should* be falling based on position
 	bool onSolidGround = inBounds && (mazeValue >= 1);
 
-	// Apply gravity if the tank is falling (jumped or over an edge)
 	if (tankFalling) {
 		tankYVelocity += tankGravity;
 		tankPosition.y += tankYVelocity;
 	}
 
-	// Check for landing or falling off edge
 	if (onSolidGround) {
-		// Check if the tank has landed after falling/jumping
 		if (tankFalling && tankPosition.y <= 0.75f) {
 			tankYVelocity = 0.0f;
 			tankPosition.y = 0.75f;
 			tankFalling = false;
 		}
-		// If not currently falling but on solid ground, ensure correct height
 		else if (!tankFalling) {
 			tankPosition.y = 0.75f;
-		}
 
-		// Coin collision detection (only when grounded)
+		}
 		if (maze[roundedMazeX][roundedMazeZ] == 2) {
 			score++;
-			maze[roundedMazeX][roundedMazeZ] = 1; // Remove the coin
+			maze[roundedMazeX][roundedMazeZ] = 1;
 			if (score == initialCoins) {
 				win = true;
 			}
 		}
 	} else {
-		// If not on solid ground, ensure the tank is marked as falling
 		if (!tankFalling) {
 			tankFalling = true;
-			// Optional: Give a small initial downward velocity if falling off edge
-			// tankYVelocity = 0.0f; // Or a small negative value
 		}
 	}
 
@@ -763,6 +710,8 @@ void drawTank()
 }
 
 void drawBall() {
+	if (ammo <= 0) gameOver = true;
+
 	for (int i = 0; i < ballPositions.size(); i++)
 	{
 		if (ballActives[i]) {
@@ -778,9 +727,9 @@ void drawBall() {
 				false,
 				m.getPtr());
 
-			glUniform3f(LightDirectionUniformLocation, lightDirection.x, lightDirection.y, lightDirection.z); // Use direction
-			glUniform3f(ColourUniformLocation, 0.5f, 0.5f, 0.5f); // Set object color (e.g., grey for ball)
-			glUniform3f(LightColorUniformLocation, lightColor.x, lightColor.y, lightColor.z); // Set light color
+			glUniform3f(LightDirectionUniformLocation, lightDirection.x, lightDirection.y, lightDirection.z);
+			glUniform3f(ColourUniformLocation, 0.5f, 0.5f, 0.5f);
+			glUniform3f(LightColorUniformLocation, lightColor.x, lightColor.y, lightColor.z);
 			glUniform4f(AmbientUniformLocation, ambient.x, ambient.y, ambient.z, 1.0);
 			glUniform4f(SpecularUniformLocation, specular.x, specular.y, specular.z, 1.0);
 			glUniform1f(SpecularPowerUniformLocation, specularPower);
@@ -797,25 +746,23 @@ void drawBall() {
 			ballVelocities[i] = ballVelocities[i] + gravity;
 			ballPositions[i] = ballPositions[i] + ballVelocities[i];
 
-			// Collision detection with coins
-			int mazeX = (int)(ballPositions[i].x / 2);
-			int mazeZ = (int)(ballPositions[i].z / 2);
+			int mazeX = (int)std::round(ballPositions[i].x / 2.0f);
+			int mazeZ = (int)std::round(ballPositions[i].z / 2.0f);
 
 			if (mazeX >= 0 && mazeX < mazeHeight && mazeZ >= 0 && mazeZ < mazeWidth && maze[mazeX][mazeZ] == 2)
 			{
 				score++;
-				maze[mazeX][mazeZ] = 1; // Remove the coin
+				maze[mazeX][mazeZ] = 1;
 
-				// Remove the ball that hit the coin
 				ballActives.erase(ballActives.begin() + i);
 				ballPositions.erase(ballPositions.begin() + i);
 				ballVelocities.erase(ballVelocities.begin() + i);
-				i--; // Decrement i to account for the removed element
-				
+				i--;
+
 				if (score == initialCoins) {
 					win = true;
 				}
-				continue; // Skip the rest of the loop for this ball
+				continue;
 			}
 
 			if (
@@ -825,7 +772,7 @@ void drawBall() {
 				ballPositions[i].z > 20 ||
 				ballPositions[i].z < -20)
 			{
-				// Get rid of the oldest ball in the array.
+				// Get rid of the oldest ball in the array, which is the one that fell out of bounds.
 				ballActives.erase(ballActives.begin() + i);
 				ballPositions.erase(ballPositions.begin() + i);
 				ballVelocities.erase(ballVelocities.begin() + i);
@@ -836,45 +783,36 @@ void drawBall() {
 }
 
 void drawSkybox() {
-    // Use the skybox shader program (already set in display)
-    // glUseProgram(skyboxShaderProgramID); // Set in display loop before calling
-
-    // Get the view matrix from the camera manipulator by applying it to an identity matrix
-    Matrix4x4 viewMatrix; // Starts as identity
+    Matrix4x4 viewMatrix;
     viewMatrix = cameraManip.apply(viewMatrix);
 
-    // Remove the translation part of the view matrix using the new method
     viewMatrix.removeTranslation();
 
-    // The ModelView matrix for the skybox is just the modified view matrix
-    // (no model transformation needed as it's centered on the camera)
     glUniformMatrix4fv(skyboxMVMatrixUniformLocation, 1, false, viewMatrix.getPtr());
-    // Projection matrix is set in the display loop
 
-    // Bind the cubemap texture
-    glActiveTexture(GL_TEXTURE0); // Use texture unit 0
+    glActiveTexture(GL_TEXTURE0);
     glBindTexture(GL_TEXTURE_CUBE_MAP, skybox_texture);
-    glUniform1i(skyboxCubemapUniformLocation, 0); // Tell shader to use texture unit 0
+    glUniform1i(skyboxCubemapUniformLocation, 0);
 
-    // Draw the skybox cube mesh
-    // Skybox shader only needs vertex positions
     skybox.Draw(
-        glGetAttribLocation(skyboxShaderProgramID, "aVertexPosition"), // Use position attribute from skybox shader
-        -1, // No normal needed for basic skybox
-        -1  // No texcoord needed (using vertex position)
+        glGetAttribLocation(skyboxShaderProgramID, "aVertexPosition"),
+        -1,
+        -1
     );
 
-    glBindTexture(GL_TEXTURE_CUBE_MAP, 0); // Unbind cubemap
+    glBindTexture(GL_TEXTURE_CUBE_MAP, 0);
 }
 
-// Function to fire the ball
 void fireBall() {
+	if (ammo <= 0) return;
+
+	--ammo;
+
     ballActives.push_back(true);
     float radians = -turretRotation * (M_PI / 180.0f);
 	float ballDistance = 0.0f;
-    ballPositions.push_back(tankPosition + Vector3f(-sin(radians) * ballDistance, 2.0f, cos(radians) * ballDistance)); // Initial position of the ball
+    ballPositions.push_back(tankPosition + Vector3f(-sin(radians) * ballDistance, 2.0f, cos(radians) * ballDistance));
 
-    // Calculate the direction based on turret rotation
     radians = -turretRotation * (M_PI / 180.0f);
     ballVelocities.push_back(Vector3f(-sin(radians), 0.0f, cos(radians)) * ballSpeed);
 }
@@ -889,57 +827,57 @@ void keyboard(unsigned char key, int x, int y)
 
     if (showLevelSelection) {
         if (key == 'e') {
-            showLevelSelection = false; // Cancel level selection
+            showLevelSelection = false;
         } else if (key >= '0' && key < ('0' + levelFiles.size())) {
             int levelIndex = key - '0';
-            levelName = levelFiles[levelIndex]; // Update the current level name
+            levelName = levelFiles[levelIndex];
 
-            // Reset game state before loading new level
+            // Reset everything in the game.
             gameOver = false;
             tankFalling = false;
-            tankPosition = Vector3f(0.0f, 0.0f, 0.0f); // Will be set by loadLevel spawn point
+            tankPosition = Vector3f(0.0f, 0.0f, 0.0f);
             tankRotation = 0.0f;
             turretRotation = 0.0f;
             tankYVelocity = 0.0f;
-            tankVelocity = 0.0f; // Reset velocity
+            tankVelocity = 0.0f;
             tankRotationVelocity = 0.0f;
             turretVelocity = 0.0f;
             score = 0;
             game_time = 0.0f;
             win = false;
-            help = false; // Close help if open
-            ballPositions.clear(); // Clear existing balls
+            help = false;
+            ballPositions.clear();
             ballVelocities.clear();
             ballActives.clear();
-            canFire = true; // Reset firing state
-            cockpitView = false; // Reset view on level change
+            canFire = true;
+            cockpitView = false;
+			ammo = 15;
 
             loadLevel(("../levels/" + levelName).c_str());
-            showLevelSelection = false; // Hide selection screen after loading
+            showLevelSelection = false;
         }
     } else {
         if ((gameOver || win) && key == 'r') {
-            // Reset game state
             gameOver = false;
             tankFalling = false;
-            tankPosition = Vector3f(0.0f, 0.0f, 0.0f); // Will be set by loadLevel spawn point
+            tankPosition = Vector3f(0.0f, 0.0f, 0.0f);
             tankRotation = 0.0f;
             turretRotation = 0.0f;
             tankYVelocity = 0.0f;
-            tankVelocity = 0.0f; // Reset velocity
+            tankVelocity = 0.0f;
             tankRotationVelocity = 0.0f;
             turretVelocity = 0.0f;
             score = 0;
             game_time = 0.0f;
             win = false;
-            help = false; // Close help if open
-            ballPositions.clear(); // Clear existing balls
+            help = false;
+            ballPositions.clear();
             ballVelocities.clear();
             ballActives.clear();
-            canFire = true; // Reset firing state
-            cockpitView = false; // Reset view on restart
+            canFire = true;
+            cockpitView = false;
+			ammo = 15;
 
-            // Reload the current level
             loadLevel(("../levels/" + levelName).c_str());
         }
 
@@ -947,25 +885,24 @@ void keyboard(unsigned char key, int x, int y)
             help = !help;
         }
 
-        if(key == 'e') {
-            showLevelSelection = true; // Show level selection screen
-            help = false; // Hide help when showing levels
+        if(key == 'e' && !gameOver) {
+            showLevelSelection = true; 
+            help = false; 
         }
 
-        // Toggle cockpit view
         if (key == 'c' && !gameOver && !win) {
             cockpitView = !cockpitView;
-            updateCamera(); // Update camera immediately after toggle
+            updateCamera();
         }
 
-        // Jump mechanic: Spacebar (ASCII 32)
+        // ASCII 32 is spacebar, this is the jump mechanic.
         if (key == 32 && !tankFalling && !gameOver && !win) {
-            tankYVelocity = 0.03f; // Set initial upward velocity for jump
+            tankYVelocity = 0.03f; 
 			tankVelocity = 0.40f;
-            tankFalling = true; // Tank is now in the air
+            tankFalling = true;
         }
 
-        keyStates[key] = true; // Only set key state if not in level selection
+        keyStates[key] = true;
     }
 
 	glutPostRedisplay();
@@ -981,7 +918,7 @@ void keyUp(unsigned char key, int x, int y)
 //! Handle Keys
 void handleKeys()
 {
-	if (tankFalling || win || showLevelSelection || gameOver) return; // Prevent input during these states
+	if (tankFalling || win || showLevelSelection || gameOver) return; // Prevent input during these states.
 
 	if (fabs(tankVelocity) < 0.001f)
 	{
@@ -996,9 +933,7 @@ void handleKeys()
     {
         tankVelocity += tankAcceleration;
 
-		// Max movement speed.
-
-        if(tankVelocity > tankMaxVelocity) {
+        if(tankVelocity > tankMaxVelocity) { // Max movement speed.
             tankVelocity = tankMaxVelocity;
         }
     }
@@ -1028,8 +963,8 @@ void handleKeys()
 		tankRotationVelocity -= tankRotationAcceleration;
 		if (tankRotationVelocity < -tankRotationMaxVelocity) tankRotationVelocity = -tankRotationMaxVelocity;
 
-		turretVelocity -= turretAcceleration; // Rotate right
-		if (turretVelocity < -turretMaxVelocity) turretVelocity = -turretMaxVelocity;
+		turretVelocity -= turretAcceleration;
+		if (turretVelocity < -turretMaxVelocity) turretVelocity = turretMaxVelocity;
         updateCamera();
     }
     if(keyStates['j']) // Rotate turret left.
@@ -1092,30 +1027,21 @@ void updateCamera() // Update the camera to focus on the tank.
     Vector3f tankWorldPos;
 
     if (cockpitView) {
-        // Raise the base position slightly higher for cockpit view
-        tankWorldPos = Vector3f(tankPosition.x, tankPosition.y + 1.0f, tankPosition.z); // Increased Y offset for cockpit
+        tankWorldPos = Vector3f(tankPosition.x, tankPosition.y + 1.0f, tankPosition.z); 
 
-        // Cockpit view: Position camera slightly in front of the tank, looking forward based on turret rotation
         float turretRadians = -turretRotation * (M_PI / 180.0f);
         Vector3f lookDirection = Vector3f(-sin(turretRadians), 0.0f, cos(turretRadians));
 
-        // Set the focus point slightly ahead of the tank's current position along the turret direction
-        // This becomes the center point around which the spherical camera operates.
-        Vector3f focusPoint = tankWorldPos + lookDirection * 1.3f; // Focus slightly in front
+        Vector3f focusPoint = tankWorldPos + lookDirection * 1.3f;
 
-        // Set the manipulator's focus
         cameraManip.setFocus(focusPoint);
 
-        // Set pan to match turret rotation, tilt slightly down, and radius very small
-        // The small radius places the camera *at* the focus point we just set.
-        // Adjust tilt slightly if needed for better view.
-        cameraManip.setPanTiltRadius(turretRotation / (180 / M_PI), -1.5f, 0.1f); // Pan = turret, Tilt slightly down, Radius minimal
+        cameraManip.setPanTiltRadius(turretRotation / (180 / M_PI), -1.5f, 0.1f);
 
-    } else {
-        // Normal third-person view uses the standard offset
-        tankWorldPos = Vector3f(tankPosition.x, tankPosition.y + 0.5f, tankPosition.z); // Standard Y offset
+    } else { // Normal view.
+        tankWorldPos = Vector3f(tankPosition.x, tankPosition.y + 0.5f, tankPosition.z);
         cameraManip.setFocus(tankWorldPos);
-	    cameraManip.setPanTiltRadius(turretRotation/(180/M_PI), -1.0f, 4.0f); // Adjusted radius and tilt for better view
+	    cameraManip.setPanTiltRadius(turretRotation/(180/M_PI), -1.0f, 4.0f);
     }
 }
 
@@ -1125,19 +1051,24 @@ void fireBallTimer(int value)
 }
 
 void loadLevel(const char* filename) {
-    // Extract just the filename part for levelName update
     std::string fullPath(filename);
     size_t lastSlash = fullPath.find_last_of("/\\");
+    std::string currentLevelFilename;
     if (lastSlash != std::string::npos) {
-        levelName = fullPath.substr(lastSlash + 1);
+        currentLevelFilename = fullPath.substr(lastSlash + 1);
     } else {
-        levelName = fullPath; // Use the full string if no slash found
+        currentLevelFilename = fullPath;
+    }
+    levelName = currentLevelFilename;
+
+    if (currentLevelFilename == "random.level") {
+        generateRandomLevel();
+        return;
     }
 
     std::ifstream file(filename);
     if (!file.is_open()) {
         std::cerr << "Could not open level file: " << filename << std::endl;
-        // Handle error, perhaps load a default level or exit
         return;
     }
 
@@ -1157,25 +1088,21 @@ void loadLevel(const char* filename) {
     mazeHeight = tempMaze.size();
     mazeWidth = tempMaze[0].size();
 
-    // Dynamically allocate memory for the maze
     maze = new int*[mazeHeight];
     for (int i = 0; i < mazeHeight; ++i) {
         maze[i] = new int[mazeWidth];
         if (maze[i] == nullptr) {
             std::cerr << "Memory allocation failed!" << std::endl;
-            // Handle the error appropriately, e.g., exit the program
             return;
         }
     }
 
-    // Copy the data to the maze array
     for (int i = 0; i < mazeHeight; ++i) {
         for (int j = 0; j < mazeWidth; ++j) {
             maze[i][j] = tempMaze[i][j];
         }
     }
 
-	// Count initial coins
 	initialCoins = 0;
 	for (int i = 0; i < mazeHeight; ++i) {
 		for (int j = 0; j < mazeWidth; ++j) {
@@ -1186,6 +1113,102 @@ void loadLevel(const char* filename) {
 	}
 
     file.close();
+}
+
+void generateRandomLevel() {
+    if (maze != nullptr) {
+        for (int i = 0; i < mazeHeight; ++i) {
+            delete[] maze[i];
+        }
+        delete[] maze;
+        maze = nullptr;
+    }
+
+    std::random_device rd;
+    std::default_random_engine generator(rd());
+    std::uniform_int_distribution<int> sizeDistribution(10, 30);
+    std::uniform_int_distribution<int> coinDistribution(0, 100);
+
+    mazeHeight = sizeDistribution(generator);
+    mazeWidth = sizeDistribution(generator);
+
+    maze = new int*[mazeHeight];
+    for (int i = 0; i < mazeHeight; ++i) {
+        maze[i] = new int[mazeWidth];
+        if (maze[i] == nullptr) {
+            std::cerr << "Memory allocation failed for random maze!" << std::endl;
+            return;
+        }
+    }
+
+    for (int i = 0; i < mazeHeight; ++i) {
+        for (int j = 0; j < mazeWidth; ++j) {
+            maze[i][j] = 1;
+        }
+    }
+
+    int centerZ = mazeHeight / 2;
+    int centerX = mazeWidth / 2;
+
+    if (centerX > 0 && centerX < mazeHeight - 1 && centerZ > 0 && centerZ < mazeWidth - 1) {
+        maze[centerX][centerZ] = 3;
+        tankPosition.x = centerX * 2;
+        tankPosition.z = centerZ * 2;
+        tankPosition.y = 0.75f;
+    } else {
+        centerX = std::min(std::max(1, centerX), mazeHeight - 2);
+        centerZ = std::min(std::max(1, centerZ), mazeWidth - 2);
+		maze[centerX][centerZ] = 3;
+        tankPosition.x = centerX * 2;
+        tankPosition.z = centerZ * 2;
+        tankPosition.y = 0.75f;
+    }
+
+    std::uniform_int_distribution<int> rowOrColDistribution(0, 1);
+    std::uniform_int_distribution<int> lineDistribution;
+
+    int numLinesToRemove = sizeDistribution(generator) / 2;
+    for (int k = 0; k < numLinesToRemove; ++k) {
+        if (rowOrColDistribution(generator) == 0) {
+            lineDistribution = std::uniform_int_distribution<int>(1, mazeHeight - 2);
+            int rowToRemove = lineDistribution(generator);
+            for (int j = 1; j < mazeWidth - 1; ++j) {
+                maze[rowToRemove][j] = 0;
+            }
+        } else {
+            lineDistribution = std::uniform_int_distribution<int>(1, mazeWidth - 2);
+            int colToRemove = lineDistribution(generator);
+            for (int i = 1; i < mazeHeight - 1; ++i) {
+                maze[i][colToRemove] = 0;
+            }
+        }
+    }
+
+    std::uniform_int_distribution<int> cellDistributionW(1, mazeWidth - 2);
+    std::uniform_int_distribution<int> cellDistributionH(1, mazeHeight - 2);
+    int numCratesToRemove = sizeDistribution(generator) * 2;
+    for (int k = 0; k < numCratesToRemove; ++k) {
+        int rowToRemove = cellDistributionH(generator);
+        int colToRemove = cellDistributionW(generator);
+        maze[rowToRemove][colToRemove] = 0;
+    }
+
+    initialCoins = 0;
+    for (int i = 0; i < mazeHeight; ++i) {
+        for (int j = 0; j < mazeWidth; ++j) {
+            if (maze[i][j] == 1 && coinDistribution(generator) < 10) {
+                maze[i][j] = 2;
+                initialCoins++;
+            }
+            if (maze[i][j] == 3) {
+                tankPosition.x = i * 2;
+                tankPosition.z = j * 2;
+                tankPosition.y = 0.75f;
+            }
+        }
+    }
+
+	maze[centerX][centerZ] = 3;
 }
 
 void render2dText(std::string text, float r, float g, float b, float x, float y)
