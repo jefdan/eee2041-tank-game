@@ -92,6 +92,10 @@ float turretDeceleration = 0.2f;
 float turretMaxVelocity = 5.0f;
 float turretVelocityDecay = 0.91f;
 
+// Mouse control.
+int lastMouseX = -1;
+float mouseSensitivity = 1.0f;
+
 // Ball properties.
 std::vector<Vector3f> ballPositions;
 std::vector<Vector3f> ballVelocities;
@@ -219,6 +223,8 @@ int main(int argc, char** argv)
 	cameraManip.setFocus(tank_chassis.getMeshCentroid());
 
 	glClearColor(0.0,0.33,0.67,1.0);
+
+    lastMouseX = -1; // Initialize lastMouseX
 
 	//Enter main loop
     glutMainLoop();
@@ -710,8 +716,6 @@ void drawTank()
 }
 
 void drawBall() {
-	if (ammo <= 0) gameOver = true;
-
 	for (int i = 0; i < ballPositions.size(); i++)
 	{
 		if (ballActives[i]) {
@@ -766,13 +770,13 @@ void drawBall() {
 			}
 
 			if (
-				ballPositions[i].x > 20 || // If the ball is out of bounds...
-				ballPositions[i].x < -20 ||
-				ballPositions[i].y < 0 ||
-				ballPositions[i].z > 20 ||
-				ballPositions[i].z < -20)
+				ballPositions[i].x > mazeHeight * 2 ||
+				ballPositions[i].x < 0 ||
+				ballPositions[i].y < -5.0f ||
+				ballPositions[i].z > mazeWidth * 2 ||
+				ballPositions[i].z < 0)
 			{
-				// Get rid of the oldest ball in the array, which is the one that fell out of bounds.
+				// Get rid of the ball if it's out of bounds or fell too far.
 				ballActives.erase(ballActives.begin() + i);
 				ballPositions.erase(ballPositions.begin() + i);
 				ballVelocities.erase(ballVelocities.begin() + i);
@@ -857,7 +861,7 @@ void keyboard(unsigned char key, int x, int y)
             showLevelSelection = false;
         }
     } else {
-        if ((gameOver || win) && key == 'r') {
+        if (key == 'r') {
             gameOver = false;
             tankFalling = false;
             tankPosition = Vector3f(0.0f, 0.0f, 0.0f);
@@ -976,7 +980,7 @@ void handleKeys()
     if(keyStates['l']) // Rotate turret right.
     {
         turretVelocity -= turretAcceleration;
-		if (turretVelocity < -turretMaxVelocity) turretVelocity = -turretMaxVelocity;
+		if (turretVelocity < -turretMaxVelocity) turretVelocity = turretMaxVelocity;
         updateCamera();
     }
 	if(keyStates['k'] && canFire)
@@ -997,7 +1001,16 @@ void mouse(int button, int state, int x, int y)
 //! Motion
 void motion(int x, int y)
 {
-	cameraManip.handleMouseMotion(x,y);
+    if (lastMouseX == -1) {
+        lastMouseX = x;
+        return;
+    }
+
+    int deltaX = x - lastMouseX;
+    turretRotation -= (float)deltaX * mouseSensitivity;
+    lastMouseX = x;
+
+    updateCamera();
 	glutPostRedisplay();
 }
 
