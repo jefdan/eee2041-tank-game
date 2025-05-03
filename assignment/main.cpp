@@ -1001,6 +1001,12 @@ void mouse(int button, int state, int x, int y)
 //! Motion
 void motion(int x, int y)
 {
+    // Stop mouse control when a menu is showing.
+    if (showLevelSelection || gameOver || win) {
+        lastMouseX = -1;
+        return;
+    }
+
     if (lastMouseX == -1) {
         lastMouseX = x;
         return;
@@ -1052,7 +1058,7 @@ void updateCamera() // Update the camera to focus on the tank.
         cameraManip.setPanTiltRadius(turretRotation / (180 / M_PI), -1.5f, 0.1f);
 
     } else { // Normal view.
-        tankWorldPos = Vector3f(tankPosition.x, tankPosition.y + 0.5f, tankPosition.z);
+        tankWorldPos = Vector3f(tankPosition.x, 0.75f + 0.5f, tankPosition.z);
         cameraManip.setFocus(tankWorldPos);
 	    cameraManip.setPanTiltRadius(turretRotation/(180/M_PI), -1.0f, 4.0f);
     }
