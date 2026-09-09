@@ -69,6 +69,7 @@ bool Mesh::loadOBJ(std::string filename)
 				
 				
 	initBuffers();
+	return true;
 }
 
 //! Init Vertex array Buffers
